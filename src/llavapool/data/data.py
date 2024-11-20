@@ -16,8 +16,8 @@ from transformers.models.mllama.processing_mllama import (
 )
 from qwen_vl_utils import process_vision_info
 
-from .params import DataArguments
-from .constants import (
+from ..config.params import DataArguments
+from ..config.constants import (
     MODEL_TYPES,  # ["phi", "qwen", "llama"]
     IMAGE_TOKEN_INDEX,
     IGNORE_INDEX,

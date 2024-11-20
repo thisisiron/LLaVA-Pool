@@ -13,10 +13,10 @@ from transformers import (
 )
 
 from liger_kernel.transformers import apply_liger_kernel_to_mllama
-from training.data import make_supervised_data_module
-from training.params import DataArguments, ModelArguments, TrainingArguments
-from training.trainer import Phi3VTrainer, LLamaVTrainer
-from training.train_utils import (
+from llavapool.data.data import make_supervised_data_module
+from llavapool.config.params import DataArguments, ModelArguments, TrainingArguments
+from llavapool.train.trainer import Phi3VTrainer, LLamaVTrainer
+from llavapool.train.train_utils import (
     get_peft_state_maybe_zero_3,
     get_peft_state_non_lora_maybe_zero_3,
     safe_save_model_for_hf_trainer,
