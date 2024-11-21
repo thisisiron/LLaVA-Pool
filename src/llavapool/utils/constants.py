@@ -1,7 +1,7 @@
 """Constants and enums used across the codebase."""
 
 # Supported model types
-MODEL_TYPES = ["phi", "qwen", "llama"]
+MODEL_TYPES = ["phi", "qwen2-vl", "llama"]
 
 # Token indices
 IMAGE_TOKEN_INDEX = -200

@@ -47,7 +47,7 @@ class BaseVTrainer(Trainer):
             if self.args.projector_lr is not None:
                 lr_mapper[self.projector_key] = self.args.projector_lr
             if self.args.vision_lr is not None:
-                lr_mapper["vision_model"] = self.args.vision_lr
+                lr_mapper[self.vision_encoder_key] = self.args.vision_lr
             
             if len(lr_mapper) > 0:
                 special_lr_parameters = [
@@ -254,6 +254,7 @@ class LLamaVTrainer(BaseVTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.projector_key = "multi_modal_projector"
+        self.vision_encoder_key = "vision_model"
 
 
 class Phi3VTrainer(BaseVTrainer):
@@ -263,7 +264,23 @@ class Phi3VTrainer(BaseVTrainer):
         self.processor = processor
         self.processor.chat_template = None
         self.projector_key = "img_projection"
+        self.vision_encoder_key = "vision_model"
 
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        super()._save(output_dir, state_dict)
+        if self.processor is not None:
+            self.processor.save_pretrained(output_dir)
+
+class QwenVTrainer(BaseVTrainer):
+    
+    def __init__(self, *args, processor: Optional[ProcessorMixin] = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.processor = processor
+        if self.processor is not None:
+            self.processor.chat_template = None
+        self.projector_key = "merger"
+        self.vision_encoder_key = "visual"
+        
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         super()._save(output_dir, state_dict)
         if self.processor is not None:

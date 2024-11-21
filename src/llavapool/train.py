@@ -5,17 +5,19 @@ import pathlib
 import torch
 import transformers
 from peft import LoraConfig, get_peft_model
+from transformers import logging
 from transformers import (
     AutoProcessor,
     BitsAndBytesConfig,
     AutoModelForCausalLM,
     MllamaForConditionalGeneration,
+    Qwen2VLForConditionalGeneration
 )
 
 from liger_kernel.transformers import apply_liger_kernel_to_mllama
 from llavapool.data.data import make_supervised_data_module
 from llavapool.config.params import DataArguments, ModelArguments, TrainingArguments
-from llavapool.train.trainer import Phi3VTrainer, LLamaVTrainer
+from llavapool.train.trainer import Phi3VTrainer, LLamaVTrainer, QwenVTrainer
 from llavapool.train.train_utils import (
     get_peft_state_maybe_zero_3,
     get_peft_state_non_lora_maybe_zero_3,
@@ -23,12 +25,7 @@ from llavapool.train.train_utils import (
 )
 
 
-local_rank = None
-
-
-def rank0_print(*args):
-    if local_rank == 0 or local_rank == '0' or local_rank is None:
-        print(*args)
+logger = logging.get_logger(__name__)
 
 
 def find_target_linear_names(
@@ -58,7 +55,7 @@ def find_target_linear_names(
     if num_lora_modules > 0:
         lora_module_names = lora_module_names[-num_lora_modules:]
     if verbose:
-        rank0_print(
+        logger.info(
             f"Found {len(lora_module_names)} lora modules: {lora_module_names}"
         )
     return lora_module_names
@@ -82,7 +79,15 @@ def configure_vision_tower(
         img_projection_params = (
             model.vision_embed_tokens.img_projection.parameters()
         )
-    else:  # llama
+    elif model_type == "qwen2-vl":
+        vision_tower = model.visual
+        vision_tower.to(dtype=compute_dtype, device=device)
+        img_projection_params = model.visual.parameters()
+
+        merger_params = model.visual.merger.parameters()
+        set_requires_grad(merger_params, training_args.tune_merger)
+
+    elif model_type == "llama":
         vision_tower = model.vision_model
         vision_tower.to(dtype=compute_dtype, device=device)
         img_projection_params = model.multi_modal_projector.parameters()
@@ -121,6 +126,13 @@ def configure_llm(model, training_args, model_type="phi"):
         for name, param in model.model.named_parameters():
             if name.startswith('layers') or name.startswith('norm'):
                 param.requires_grad = not training_args.freeze_llm
+    elif model_type == "qwen2-vl":
+        lm_head_params = model.lm_head.parameters()
+        set_requires_grad(lm_head_params, not training_args.freeze_llm)
+
+        llm_params = model.parameters()
+        set_requires_grad(llm_params, not training_args.freeze_llm)
+        
     else:  # llama
         llm_params = model.language_model.parameters()
         set_requires_grad(llm_params, not training_args.freeze_llm)
@@ -136,7 +148,6 @@ def module_filter_fn(mod: torch.nn.Module, fqn: str) -> bool:
 
 
 def train():
-    global local_rank
 
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments)
@@ -209,7 +220,7 @@ def train():
         ))
 
     # Initialize model
-    if model_args.model_type == "phi":
+    if model_args.model_type in ["phi",]:
         model = AutoModelForCausalLM.from_pretrained(
             model_args.model_id,
             torch_dtype=compute_dtype,
@@ -220,6 +231,14 @@ def train():
                 if not training_args.disable_flash_attn2
                 else "eager"
             ),
+            **bnb_model_from_pretrained_args
+        )
+        model.config.use_cache = False
+    elif model_args.model_type == "qwen2-vl":
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
+            model_args.model_id,
+            torch_dtype=compute_dtype,
+            attn_implementation="flash_attention_2" if not training_args.disable_flash_attn2 else "sdpa", 
             **bnb_model_from_pretrained_args
         )
         model.config.use_cache = False
@@ -278,7 +297,7 @@ def train():
             if training_args.fp16:
                 model.to(torch.float16)
                 
-        rank0_print("Adding LoRA to the model...")
+        logger.info("Adding LoRA to the model...")
         model = get_peft_model(model, peft_config)
 
     # Initialize processor
@@ -297,6 +316,15 @@ def train():
                 processor.tokenizer.pad_token
             )
         )
+    elif model_args.model_type == "qwen2-vl":
+        processor = AutoProcessor.from_pretrained(
+            model_args.model_id,
+            padding_side="right",
+            min_pixels=data_args.min_pixels,
+            max_pixels=data_args.max_pixels,
+        )
+        # model.config.tokenizer_model_max_length = processor.tokenizer.model_max_length
+        model.config.tokenizer_padding_side = processor.tokenizer.padding_side
     else:  # llama
         processor = AutoProcessor.from_pretrained(model_args.model_id)
 
@@ -346,7 +374,7 @@ def train():
                         if (training_args.bf16
                                 and module.weight.dtype == torch.float32):
                             module = module.to(torch.bfloat16)
-            else:  # llama
+            elif model_args.model_type ["qwen2-vl", "llama"]:
                 if 'lm_head' in name or 'embed_token' in name:
                     if hasattr(module, 'weight'):
                         if (training_args.bf16
@@ -380,7 +408,7 @@ def train():
 
     trainer.save_state()
 
-    if model_args.model_type == "phi":
+    if model_args.model_type in ["phi", "qwen2-vl"]:
         model.config.use_cache = True
     else:  # llama
         model.config.text_config.use_cache = True

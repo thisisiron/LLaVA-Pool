@@ -17,8 +17,8 @@ from transformers.models.mllama.processing_mllama import (
 from qwen_vl_utils import process_vision_info
 
 from ..config.params import DataArguments
-from ..config.constants import (
-    MODEL_TYPES,  # ["phi", "qwen", "llama"]
+from ..utils.constants import (
+    MODEL_TYPES,
     IMAGE_TOKEN_INDEX,
     IGNORE_INDEX,
     LLAVA_IMAGE_TOKEN,
@@ -166,7 +166,7 @@ class BaseVisionLanguageDataset(Dataset):
         self.model_type = model_type
         
         # Model specific settings
-        if model_type == "qwen":
+        if model_type == "qwen2-vl":
             self.min_pixel = data_args.min_pixels
             self.max_pixel = data_args.max_pixels
             self.fps = data_args.fps
@@ -200,7 +200,7 @@ class BaseVisionLanguageDataset(Dataset):
                 else:
                     images.append(Image.open(image_file).convert("RGB"))
 
-            media_info["grid_key"] = "image_grid_thw" if self.model_type == "qwen" else None
+            media_info["grid_key"] = "image_grid_thw" if self.model_type == "qwen2-vl" else None
             media_info["pixel_key"] = "pixel_values"
 
         elif "video" in sources:
@@ -210,7 +210,7 @@ class BaseVisionLanguageDataset(Dataset):
                 if not video_file.startswith("http"):
                     video_file = os.path.join(self.data_args.image_folder, video_file)
 
-            if self.model_type == "qwen":
+            if self.model_type == "qwen2-vl":
                 videos = [get_video_info(video_file, self.max_pixel, self.fps)]
                 media_info["grid_key"] = "video_grid_thw"
                 media_info["pixel_key"] = "pixel_values_videos"
@@ -235,7 +235,7 @@ class BaseVisionLanguageDataset(Dataset):
         idx: int
     ) -> Dict[str, torch.Tensor]:
         """Process conversation based on model type."""
-        if self.model_type == "qwen":
+        if self.model_type == "qwen2-vl":
             return self._process_qwen_conversation(sources, media_info, idx)
         elif self.model_type == "llama":
             return self._process_llama_conversation(sources, media_info, idx)
@@ -659,7 +659,7 @@ def replace_image_tokens(input_string: str, model_type: str, start_count: int = 
 
     while LLAVA_IMAGE_TOKEN in input_string:
         has_image = True
-        if model_type == "qwen":
+        if model_type == "qwen2-vl":
             replacement = f"{VISION_START_TOKEN}{DEFAULT_IMAGE_TOKEN}{VISION_END_TOKEN}"
         elif model_type == "phi":
             replacement = f"<|image_{count}|>"
@@ -683,7 +683,7 @@ def video_to_image_tokens(input_string: str, num_frames: int, model_type: str) -
     Returns:
         Processed string with video token replaced by image tokens
     """
-    if model_type == "qwen":
+    if model_type == "qwen2-vl":
         replacement = f"{VISION_START_TOKEN}{DEFAULT_VIDEO_TOKEN}{VISION_END_TOKEN}"
         return input_string.replace(LLAVA_VIDEO_TOKEN, replacement)
     else:

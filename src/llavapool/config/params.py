@@ -25,7 +25,9 @@ class ModelArguments:
             "meta-llama/Llama-2-7B-Instruct",
             "meta-llama/Llama-1.5-3B-Vision",
             "microsoft/Phi-3.5-vision-instruct",
-            "microsoft/Phi-3-vision-128k-instruct"
+            "microsoft/Phi-3-vision-128k-instruct",
+            "Qwen/Qwen2-VL-7B-Instruct",
+            "Qwen/Qwen2-VL-2B-Instruct",
         },
         metadata={"help": "Set of allowed model IDs"}
     )
@@ -149,6 +151,14 @@ class TrainingArguments(HfTrainingArguments):
         default=16,
         metadata={"help": "Number of crops for vision preprocessing"}
     )
+    tune_merger: bool = field(
+        default=False,
+        metadata={"help": "Whether to tune merger module"}
+    )
+    merger_lr: Optional[float] = field(
+        default=None,
+        metadata={"help": "Learning rate for merger module"}
+    )
 
 
 @dataclass
@@ -170,4 +180,16 @@ class DataArguments:
     max_num_frames: int = field(
         default=10,
         metadata={"help": "Maximum number of frames for video processing"}
+    )
+    min_pixels: int = field(
+        default=512 * 28 * 28,
+        metadata={"help": "Minimum number of pixels for image processing"}
+    )
+    max_pixels: int = field(
+        default=1280 * 28 * 28,
+        metadata={"help": "Maximum number of pixels for image processing"}
+    )
+    fps: float = field(
+        default=1.0,
+        metadata={"help": "Frames per second for video processing"}
     )
