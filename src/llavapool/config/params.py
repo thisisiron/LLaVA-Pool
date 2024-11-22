@@ -165,10 +165,15 @@ class TrainingArguments(HfTrainingArguments):
 class DataArguments:
     """Arguments pertaining to data processing."""
 
-    data_path: str = field(
+    dataset_dir: str = field(
         default=None,
-        metadata={"help": "Path to the training data"}
+        metadata={"help": "Path to directory containing dataset files"}
     )
+    dataset_name: str = field(
+        default=None,
+        metadata={"help": "Name of the dataset"}
+    )
+
     lazy_preprocess: bool = field(
         default=False,
         metadata={"help": "Whether to use lazy preprocessing"}
@@ -192,4 +197,8 @@ class DataArguments:
     fps: float = field(
         default=1.0,
         metadata={"help": "Frames per second for video processing"}
+    )
+    streaming: bool = field(
+        default=False,
+        metadata={"help": "Whether to use streaming data loader"}
     )
