@@ -1,6 +1,7 @@
 
 import math
 from copy import deepcopy
+from typing import Optional
 from PIL import Image
 import numpy as np
 from decord import VideoReader
@@ -215,3 +216,21 @@ class Qwen2vlConverter(BaseConverter):
             raise ValueError(f"Number of {VIDEO_TOKEN} tokens does not match the number of videos.")
 
         return messages
+
+
+CONVERTERS = {
+    "base": BaseConverter,
+    "qwen2_vl": Qwen2vlConverter,
+}
+
+
+def get_mm_convter(
+    name: str,
+    image_token: Optional[str] = None,
+    video_token: Optional[str] = None,
+):
+    converter_class = CONVERTERS.get(name, None)
+    if converter_class is None:
+        raise ValueError(f"Invalid converter name: {name}")
+
+    return converter_class(image_token, video_token)
