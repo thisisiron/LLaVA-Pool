@@ -63,7 +63,6 @@ def smart_resize(
         adjusted_width = ceil_by_factor(width * beta, factor)
     return image.resize((adjusted_width, adjusted_height))
         
-def smart_sample_
 
 class BaseConverter:
     def __init__(self, image_token, video_token):
@@ -156,7 +155,7 @@ class BaseConverter:
 
         return mm_inputs
 
-    def process_messages(self, messages, images, videos, processor):
+    def process_media_tokens(self, messages, images, videos, processor):
         raise NotImplementedError("This method must be implemented in the subclass")
     
 
@@ -167,7 +166,7 @@ class Qwen2vlConverter(BaseConverter):
         pass
 
     @override
-    def process_messages(
+    def process_media_tokens(
         self,
         messages,
         images,
@@ -191,7 +190,7 @@ class Qwen2vlConverter(BaseConverter):
 
                 content = content.replace(
                     IMAGE_TOKEN,
-                    f"<|vision_start|>{self.image_token * (image_grid_thw[num_image_tokens].prod() // merge_length)}<|vision_end|>"
+                    f"<|vision_start|>{self.image_token * (image_grid_thw[num_image_tokens].prod() // merge_length)}<|vision_end|>",
                     1,
                 )
                 num_image_tokens += 1
@@ -202,7 +201,7 @@ class Qwen2vlConverter(BaseConverter):
 
                 content = content.replace(
                     VIDEO_TOKEN,
-                    "<|vision_start|>{self.video_token * (video_grid_thw[num_video_tokens].prod() // merge_length)}<|vision_end|>"                   
+                    "<|vision_start|>{self.video_token * (video_grid_thw[num_video_tokens].prod() // merge_length)}<|vision_end|>",         
                     1,
                 )
                 num_video_tokens += 1
@@ -224,7 +223,7 @@ CONVERTERS = {
 }
 
 
-def get_mm_convter(
+def get_mm_converter(
     name: str,
     image_token: Optional[str] = None,
     video_token: Optional[str] = None,
