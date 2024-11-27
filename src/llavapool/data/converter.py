@@ -1,13 +1,15 @@
 
 import math
 from copy import deepcopy
-from typing import Optional
+from typing import Optional, Tuple, List, Dict, Union, Sequence
 from PIL import Image
 import numpy as np
 from decord import VideoReader
 from typing_extensions import override
 
 from ..utils.constants import IMAGE_TOKEN, VIDEO_TOKEN
+from .template import get_template_and_fix_tokenizer
+from .data_loader import Role
 
 
 IMAGE_FACTOR = 28
@@ -65,7 +67,11 @@ def smart_resize(
         
 
 class BaseConverter:
-    def __init__(self, image_token, video_token):
+    def __init__(self, template, processor, image_token=None, video_token=None):
+        self.template = template
+        self.processor = processor
+        self.tokenizer = processor.tokenizer
+
         self.image_token = image_token
         self.video_token = video_token
 
@@ -83,6 +89,7 @@ class BaseConverter:
 
     def _get_images(self, images, **kwargs):
         preprocessed_images = []
+
         for image in images:
             if isinstance(image, str):
                 pil_image = Image.open(image)
@@ -136,16 +143,17 @@ class BaseConverter:
 
         return sample_frames
     
-    def _get_mm_inputs(self, images, videos, processor):
-        image_processor = processor.image_processor
-        video_processor = processor.video_processor if processor.video_processor else image_processor
+    def get_mm_inputs(self, images, videos, **kwargs):
+        image_processor = self.processor.image_processor
+        video_processor = getattr(self.processor, 'video_processor', None) or image_processor
 
         input_dict = {"images": None}
+
         if len(images) != 0:
-            input_dict["images"] = self._get_images(images)
+            input_dict["images"] = self._get_images(images, **kwargs)
         
         if len(videos) != 0:
-            input_dict["videos"] = self._get_videos(videos)
+            input_dict["videos"] = self._get_videos(videos, **kwargs)
         
         mm_inputs = {}
         if input_dict.get("images") is not None:
@@ -155,11 +163,113 @@ class BaseConverter:
 
         return mm_inputs
 
-    def process_media_tokens(self, messages, images, videos, processor):
+    def process_media_tokens(self, messages, images, videos):
         raise NotImplementedError("This method must be implemented in the subclass")
+
+    def encode_oneturn(
+        self,
+        messages: Sequence[Dict[str, str]],
+        system: Optional[str] = None,
+        tools: Optional[str] = None,
+    ) -> Tuple[List[int], List[int]]:
+        r"""
+        Returns a single pair of token ids representing prompt and response respectively.
+        """
+        encoded_messages = self._encode(messages, system, tools)
+        prompt_ids = []
+        for encoded_ids in encoded_messages[:-1]:
+            prompt_ids += encoded_ids
+
+        answer_ids = encoded_messages[-1]
+        return prompt_ids, answer_ids
+
+    def encode_multi_turn(
+        self,
+        messages: Sequence[Dict[str, str]],
+        images: Sequence[str],
+        videos: Sequence[str],
+        system: Optional[str] = None,
+        tools: Optional[str] = None,
+    ) -> List[Tuple[List[int], List[int]]]:
+        r"""
+        Returns multiple pairs of token ids representing prompts and responses respectively.
+        """
+        messages = self.process_media_tokens(messages, images, videos)
+        encoded_messages = self._encode(messages, system, tools)
+        return [(encoded_messages[i], encoded_messages[i + 1]) for i in range(0, len(encoded_messages), 2)]
+
+    def extract_tool(self, content: str) -> Union[str, List[Tuple[str, str]]]:
+        r"""
+        Extracts tool message.
+        """
+        return self.format_tools.extract(content)
+
+    def _encode(
+        self,
+        messages: Sequence[Dict[str, str]],
+        system: Optional[str],
+        tools: Optional[str],
+    ) -> List[List[int]]:
+        r"""
+        Encodes formatted inputs to pairs of token ids.
+        Turn 0: prefix + system + query        resp
+        Turn t: sep + query                    resp
+        """
+        system = system or self.template.default_system
+        encoded_messages = []
+        for i, message in enumerate(messages):
+            elements = []
+
+            if i == 0:
+                elements += self.template.format_prefix.apply()
+                if system or tools:
+                    tool_text = self.template.format_tools.apply(content=tools)[0] if tools else ""
+                    elements += self.template.format_system.apply(content=(system + tool_text))
+
+            if i > 0 and i % 2 == 0:
+                elements += self.template.format_separator.apply()
+
+            if message["role"] == Role.USER:
+                elements += self.template.format_user.apply(content=message["content"], idx=str(i // 2))
+            elif message["role"] == Role.ASSISTANT:
+                elements += self.template.format_assistant.apply(content=message["content"])
+            elif message["role"] == Role.OBSERVATION:
+                elements += self.template.format_observation.apply(content=message["content"])
+            elif message["role"] == Role.FUNCTION:
+                elements += self.template.format_function.apply(content=message["content"])
+            else:
+                raise NotImplementedError("Unexpected role: {}".format(message["role"]))
+
+            encoded_messages.append(self._convert_elements_to_ids(elements))
+
+        return encoded_messages
+
+    def _convert_elements_to_ids(self, elements: "SLOTS") -> List[int]:
+        r"""
+        Converts elements to token ids.vkfd
+        """
+        token_ids = []
+        for elem in elements:
+            if isinstance(elem, str):
+                if len(elem) != 0:
+                    token_ids += self.tokenizer.encode(elem, add_special_tokens=False)
+            elif isinstance(elem, dict):
+                token_ids += [self.tokenizer.convert_tokens_to_ids(elem.get("token"))]
+            elif isinstance(elem, set):
+                if "bos_token" in elem and self.tokenizer.bos_token_id is not None:
+                    token_ids += [self.tokenizer.bos_token_id]
+                elif "eos_token" in elem and self.tokenizer.eos_token_id is not None:
+                    token_ids += [self.tokenizer.eos_token_id]
+            else:
+                raise ValueError("Input must be string, set[str] or dict[str, str], got {}".format(type(elem)))
+
+        return token_ids
     
 
 class Qwen2vlConverter(BaseConverter):
+    def __init__(self, template, processor, image_token=None, video_token=None):
+        super().__init__(template, processor, "<|image_pad|>", "<|video_pad|>")
+
     @override
     def _get_sample_frames(self, total_frames, video_fps, **kwargs) -> int:
         # TODO: Implement this method
@@ -171,12 +281,12 @@ class Qwen2vlConverter(BaseConverter):
         messages,
         images,
         videos,
-        processor,
+        **kwargs,
     ):
         self._check_input(images, videos)
-        image_processor = processor.image_processor
+        image_processor = self.processor.image_processor
         merge_length: int = image_processor.merge_size ** 2
-        mm_inputs = self._get_mm_inputs(images, videos, processor)
+        mm_inputs = self.get_mm_inputs(images, videos, **kwargs)
         image_grid_thw = mm_inputs.get("image_grid_thw", [])
         video_grid_thw = mm_inputs.get("video_grid_thw", [])
 
@@ -225,6 +335,8 @@ CONVERTERS = {
 
 def get_mm_converter(
     name: str,
+    template,
+    processor,
     image_token: Optional[str] = None,
     video_token: Optional[str] = None,
 ):
@@ -232,4 +344,13 @@ def get_mm_converter(
     if converter_class is None:
         raise ValueError(f"Invalid converter name: {name}")
 
-    return converter_class(image_token, video_token)
+    return converter_class(template, processor, image_token, video_token)
+
+
+
+def load_converter(processor, data_args, image_token=None, video_token=None):
+    
+    template = get_template_and_fix_tokenizer(processor.tokenizer, data_args)
+    converter = get_mm_converter(data_args.template, template, processor)
+
+    return converter
