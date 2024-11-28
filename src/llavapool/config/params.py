@@ -169,11 +169,10 @@ class DataArguments:
         default=None,
         metadata={"help": "Path to directory containing dataset files"}
     )
-    dataset_name: str = field(
+    dataset: str = field(
         default=None,
         metadata={"help": "Name of the dataset"}
     )
-
     lazy_preprocess: bool = field(
         default=False,
         metadata={"help": "Whether to use lazy preprocessing"}
@@ -187,11 +186,11 @@ class DataArguments:
         metadata={"help": "Maximum number of frames for video processing"}
     )
     min_pixels: int = field(
-        default=512 * 28 * 28,
+        default=4 * 28 * 28,
         metadata={"help": "Minimum number of pixels for image processing"}
     )
     max_pixels: int = field(
-        default=1280 * 28 * 28,
+        default=16384 * 28 * 28,
         metadata={"help": "Maximum number of pixels for image processing"}
     )
     fps: float = field(
@@ -201,4 +200,48 @@ class DataArguments:
     streaming: bool = field(
         default=False,
         metadata={"help": "Whether to use streaming data loader"}
+    )
+    template: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to template file"}
+    )
+    train_on_prompt: bool = field(
+        default=False,
+        metadata={"help": "Whether to train on prompt"}
+    )
+    tool_format: Optional[str] = field(
+        default=None,
+        metadata={"help": "Tool format for data processing"}
+    )
+    overwrite_cache: bool = field(
+        default=False,
+        metadata={"help": "Whether to overwrite cached data"}
+    )
+    preprocessing_num_workers: int = field(
+        default=16,
+        metadata={"help": "Number of workers for preprocessing"}
+    )
+    preprocessing_batch_size: int = field(
+        default=1000,
+        metadata={"help": "Batch size for preprocessing"}
+    )
+    cutoff_len: int = field(
+        default=4096,
+        metadata={"help": "Cutoff length for text processing"}
+    )
+    mask_history: bool = field(
+        default=False,
+        metadata={"help": "Whether to mask history"}
+    )
+    val_split: float = field(
+        default=0.0,
+        metadata={"help": "Validation split ratio"}
+    )
+    tokenized_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to tokenized data"}
+    )
+    ignore_pad_token_for_loss: bool = field(
+        default=True,
+        metadata={"help": "Whether or not to ignore the tokens corresponding to the pad label in loss computation."},
     )
