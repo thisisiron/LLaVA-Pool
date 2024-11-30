@@ -14,6 +14,11 @@ from transformers.models.mllama.processing_mllama import (
     convert_sparse_cross_attention_mask_to_dense,
     get_cross_attention_token_mask,
 )
+from transformers import (
+    TrainingArguments,
+    PreTrainedTokenizer,
+    ProcessorMixin,
+)
 from qwen_vl_utils import process_vision_info
 
 from ..config.params import DataArguments
@@ -46,7 +51,7 @@ def encode_video(video_path: str, max_num_frames: int = 10) -> List[Image.Image]
 
     Returns:
         List of PIL Image frames
-    """
+    """ 
     def uniform_sample(sequence: List, n: int) -> List:
         gap = len(sequence) / n
         idxs = [int(i * gap + gap / 2) for i in range(n)]
@@ -157,9 +162,7 @@ class BaseVisionLanguageDataset(Dataset):
         
         if model_type not in MODEL_TYPES:
             raise ValueError(f"Unsupported model type: {model_type}")
-            
-        self.list_data_dict = (json.load(open(data_path, "r")) 
-                              if isinstance(data_path, str) else data_path)
+
         self.processor = processor
         self.data_args = data_args
         self.padding = padding
