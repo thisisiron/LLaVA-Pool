@@ -24,6 +24,9 @@ from llavapool.train.train_utils import (
     safe_save_model_for_hf_trainer,
 )
 
+# from llavapool.data.template import get_template_and_fix_tokenizer
+from llavapool.data.converter import load_converter
+
 
 logger = logging.get_logger(__name__)
 
@@ -381,21 +384,50 @@ def train():
                                 and module.weight.dtype == torch.float32):
                             module = module.to(torch.bfloat16)
 
-    # Set up data module and trainer
-    data_module = make_supervised_data_module(
-        processor=processor,
+    converter = load_converter(processor, data_args)
+
+    from llavapool.data.data_loader import load_dataset_module
+    data_module = load_dataset_module(
+        converter=converter,
         data_args=data_args,
-        model_type=model_args.model_type,
+        model_args=model_args,
+        training_args=training_args,
+        processor=processor,
+        tokenizer=processor.tokenizer,
     )
 
-    trainer_class = (
-        Phi3VTrainer if model_args.model_type == "phi" else LLamaVTrainer
+    from llavapool.data.collator import SFTDataCollatorWith4DAttentionMask
+    IGNORE_INDEX = -100
+    data_collator = SFTDataCollatorWith4DAttentionMask(
+        converter=converter,
+        pad_to_multiple_of=8 if training_args.do_train else None,  # for shift short attention
+        label_pad_token_id=IGNORE_INDEX if data_args.ignore_pad_token_for_loss else processor.tokenizer.pad_token_id,
+        # block_diag_attn=model_args.block_diag_attn,
+        attn_implementation=getattr(model.config, "_attn_implementation", None),
+        tokenizer=processor.tokenizer,
+        processor=processor,
     )
+
+    # # Set up data module and trainer
+    # data_module = make_supervised_data_module(
+    #     processor=processor,
+    #     data_args=data_args,
+    #     model_type=model_args.model_type,
+    # )
+    if model_args.model_type == "phi":
+        trainer_class = Phi3VTrainer
+    elif model_args.model_type == "qwen2-vl":
+        trainer_class = QwenVTrainer
+    elif model_args.model_type == "llama":
+        trainer_class = LLamaVTrainer
+    
     trainer_kwargs = {
         "model": model,
         "args": training_args,
+        "data_collator": data_collator,
         **data_module
     }
+
     if model_args.model_type == "phi":
         trainer_kwargs["processor"] = processor
 

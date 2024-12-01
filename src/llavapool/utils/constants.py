@@ -7,6 +7,9 @@ MODEL_TYPES = ["phi", "qwen2-vl", "llama"]
 IMAGE_TOKEN_INDEX = -200
 IGNORE_INDEX = -100
 
+IMAGE_TOKEN = "<image>"
+VIDEO_TOKEN = "<video>"
+
 # Basic tokens
 LLAVA_IMAGE_TOKEN = "<image>"
 LLAVA_VIDEO_TOKEN = "<video>"
