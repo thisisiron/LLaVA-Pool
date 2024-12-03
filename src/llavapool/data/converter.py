@@ -166,23 +166,6 @@ class BaseConverter:
     def process_media_tokens(self, messages, images, videos):
         raise NotImplementedError("This method must be implemented in the subclass")
 
-    def encode_oneturn(
-        self,
-        messages: Sequence[Dict[str, str]],
-        system: Optional[str] = None,
-        tools: Optional[str] = None,
-    ) -> Tuple[List[int], List[int]]:
-        r"""
-        Returns a single pair of token ids representing prompt and response respectively.
-        """
-        encoded_messages = self._encode(messages, system, tools)
-        prompt_ids = []
-        for encoded_ids in encoded_messages[:-1]:
-            prompt_ids += encoded_ids
-
-        answer_ids = encoded_messages[-1]
-        return prompt_ids, answer_ids
-
     def encode_multi_turn(
         self,
         messages: Sequence[Dict[str, str]],
@@ -203,6 +186,32 @@ class BaseConverter:
         Extracts tool message.
         """
         return self.format_tools.extract(content)
+        
+    # def _replace_tokens(self, template: str, **kwargs) -> str:
+    #     """Replace template variables with actual values."""
+    #     result = template
+    #     for key, value in kwargs.items():
+    #         result = result.replace("{{" + key + "}}", str(value))
+    #     return result
+
+    def _replace_tokens(self, template: str, **kwargs) -> str:
+        """템플릿의 특수 토큰과 변수를 치환"""
+        result = template
+        
+        # 특수 토큰 처리
+        special_tokens = {
+            "{{bos_token}}": self.tokenizer.bos_token or "",
+            "{{eos_token}}": self.tokenizer.eos_token or "",
+        }
+        
+        for token, value in special_tokens.items():
+            result = result.replace(token, value)
+        
+        # 변수 치환
+        for key, value in kwargs.items():
+            result = result.replace(f"{{{{{key}}}}}", str(value))
+            
+        return result
 
     def _encode(
         self,
@@ -217,31 +226,49 @@ class BaseConverter:
         """
         system = system or self.template.default_system
         encoded_messages = []
+
         for i, message in enumerate(messages):
-            elements = []
-
+            current_message = ""
+            
+            # 첫 메시지 처리
             if i == 0:
-                elements += self.template.format_prefix.apply()
+                current_message += self.template.format_prefix  # 변경: .apply() 제거
                 if system or tools:
-                    tool_text = self.template.format_tools.apply(content=tools)[0] if tools else ""
-                    elements += self.template.format_system.apply(content=(system + tool_text))
+                    tool_text = self._replace_tokens(self.template.format_tools, content=tools) if tools else ""
+                    current_message += self._replace_tokens(self.template.format_system, content=(system + tool_text))
 
+            # 구분자 추가
             if i > 0 and i % 2 == 0:
-                elements += self.template.format_separator.apply()
+                current_message += self.template.format_separator  # 변경: .apply() 제거
 
+            # 역할별 메시지 처리
             if message["role"] == Role.USER:
-                elements += self.template.format_user.apply(content=message["content"], idx=str(i // 2))
+                current_message += self._replace_tokens(
+                    self.template.format_user,
+                    content=message["content"],
+                    idx=str(i // 2)
+                )
             elif message["role"] == Role.ASSISTANT:
-                elements += self.template.format_assistant.apply(content=message["content"])
+                current_message += self._replace_tokens(
+                    self.template.format_assistant,
+                    content=message["content"]
+                )
             elif message["role"] == Role.OBSERVATION:
-                elements += self.template.format_observation.apply(content=message["content"])
+                current_message += self._replace_tokens(
+                    self.template.format_observation,
+                    content=message["content"]
+                )
             elif message["role"] == Role.FUNCTION:
-                elements += self.template.format_function.apply(content=message["content"])
+                current_message += self._replace_tokens(
+                    self.template.format_function,
+                    content=message["content"]
+                )
             else:
-                raise NotImplementedError("Unexpected role: {}".format(message["role"]))
+                raise NotImplementedError(f"Unexpected role: {message['role']}")
 
-            encoded_messages.append(self._convert_elements_to_ids(elements))
-
+            # 토크나이징
+            encoded_messages.append(self.tokenizer.encode(current_message, add_special_tokens=False))
+            # import pdb;pdb.set_trace()
         return encoded_messages
 
     def _convert_elements_to_ids(self, elements: "SLOTS") -> List[int]:
@@ -249,6 +276,8 @@ class BaseConverter:
         Converts elements to token ids.vkfd
         """
         token_ids = []
+
+        
         for elem in elements:
             if isinstance(elem, str):
                 if len(elem) != 0:
