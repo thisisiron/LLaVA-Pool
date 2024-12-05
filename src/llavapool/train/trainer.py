@@ -272,7 +272,6 @@ class Phi3VTrainer(BaseVTrainer):
             self.processor.save_pretrained(output_dir)
 
 class QwenVTrainer(BaseVTrainer):
-    
     def __init__(self, *args, processor: Optional[ProcessorMixin] = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.processor = processor
@@ -284,4 +283,5 @@ class QwenVTrainer(BaseVTrainer):
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         super()._save(output_dir, state_dict)
         if self.processor is not None:
+            print("output_dir >>> ", output_dir)
             self.processor.save_pretrained(output_dir)
