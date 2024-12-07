@@ -356,6 +356,7 @@ def load_dataset_module(
     training_args: TrainingArguments,
     tokenizer: PreTrainedTokenizer,
     processor: ProcessorMixin = None,
+    stage: str = "sft",
 ):
     dataset_config = get_dataset_config(data_args.dataset_dir, data_args.dataset)
 
@@ -377,18 +378,19 @@ def load_dataset_module(
         data_dir=data_dir,
         data_files=data_files,
         split=dataset_config.split,
-        # cache_dir=model_args.cache_dir,
+        cache_dir=model_args.cache_dir,
         # token=model_args.hf_hub_token,
         streaming=data_args.streaming,
         # trust_remote_code=True,
     )
+    
     with training_args.main_process_first(desc="load dataset"):
         dataset = convert_dataset(dataset, dataset_config, data_args, training_args, format=dataset_config.formatting)
     
     with training_args.main_process_first(desc="pre-process dataset"):
         dataset = get_superivsed_dataset(dataset, converter, tokenizer, processor, data_args, training_args)
 
-        if data_args.val_split > 1e-6:
+        if data_args.val_size > 1e-6:
             dataset_dict = split_dataset(dataset, data_args, seed=training_args.seed)
         else:
             dataset_dict = {}

@@ -52,7 +52,8 @@ def get_dataset_config(
             dataset_info = json.load(f)
     except FileNotFoundError:
         raise FileNotFoundError(f"Dataset config not found at {config_path}")
-    
+
+    # TODO: dataset_name should be a list. We need to handle this case.
     dataset_config = DatasetConfig(dataset_name=dataset_name, file_name=dataset_info[dataset_name]["file_name"])
     dataset_config.formatting = dataset_info[dataset_name].get("formatting", "sharegpt")
     dataset_config.common = CommonColumns(**dataset_info[dataset_name]["columns"])

@@ -1,4 +1,4 @@
-
+import re
 import math
 from copy import deepcopy
 from typing import Optional, Tuple, List, Dict, Union, Sequence
@@ -40,6 +40,15 @@ def floor_by_factor(number: int, factor: int) -> int:
     return math.floor(number / factor) * factor
 
 
+def basic_resize(image, image_resolution: int = 512):
+    if max(image.width, image.height) > image_resolution:
+        resize_factor = image_resolution / max(image.width, image.height)
+        resized_width = int(image.width * resize_factor)
+        resized_height = int(image.height * resize_factor)
+        image.resize((resized_width, resized_height))
+    return image
+
+
 def smart_resize(
     image,
     resized_height: int = None,
@@ -48,21 +57,21 @@ def smart_resize(
     min_pixels: int = MIN_PIXELS,
     factor: int = IMAGE_FACTOR,
 ):
+    height, width = image.size
     if resized_height is not None and resized_width is not None:
         height, width = resized_height, resized_width
-    else:
-        height, width = image.size
 
     adjusted_height = max(factor, round_by_factor(height, factor))
     adjusted_width = max(factor, round_by_factor(width, factor))
     if adjusted_height * adjusted_width > max_pixels:
-        beta = math.sqrt((height * width) / max_pixels)
-        adjusted_height = floor_by_factor(height / beta, factor)
-        adjusted_width = floor_by_factor(width / beta, factor)
+        beta = math.sqrt(max_pixels / (height * width))
+        adjusted_height = floor_by_factor(height * beta, factor)
+        adjusted_width = floor_by_factor(width * beta, factor)
     elif adjusted_height * adjusted_width < min_pixels:
         beta = math.sqrt(min_pixels / (height * width))
         adjusted_height = ceil_by_factor(height * beta, factor)
         adjusted_width = ceil_by_factor(width * beta, factor)
+    
     return image.resize((adjusted_width, adjusted_height))
         
 
@@ -87,6 +96,11 @@ class BaseConverter:
     def __call__(self):
         return self.convert()
 
+    def process_image(self, image, **kwargs):
+        image = image.convert("RGB")
+        image = basic_resize(image, image_resolution=kwargs.get("image_resolution", 512))
+        return image
+
     def _get_images(self, images, **kwargs):
         preprocessed_images = []
 
@@ -99,8 +113,7 @@ class BaseConverter:
             if pil_image is None:
                 raise ValueError("Invalid image type")
             
-            pil_image = pil_image.convert("RGB")
-            pil_image = smart_resize(pil_image, **kwargs)
+            pil_image = self.process_image(pil_image, **kwargs)
             preprocessed_images.append(pil_image)
 
         return preprocessed_images
@@ -143,17 +156,24 @@ class BaseConverter:
 
         return sample_frames
     
-    def get_mm_inputs(self, images, videos, **kwargs):
+    def get_mm_inputs(self, images, videos, seq_lens=None, **kwargs):
         image_processor = self.processor.image_processor
         video_processor = getattr(self.processor, 'video_processor', None) or image_processor
 
         input_dict = {"images": None}
 
         if len(images) != 0:
-            input_dict["images"] = self._get_images(images, **kwargs)
+            input_dict["images"] = self._get_images(
+                images, 
+                image_resolution=getattr(self.processor.image_resolution, "image_resolution", 512),
+                **kwargs
+            )
         
         if len(videos) != 0:
-            input_dict["videos"] = self._get_videos(videos, **kwargs)
+            input_dict["videos"] = self._get_videos(
+                videos, 
+                **kwargs
+        )
         
         mm_inputs = {}
         if input_dict.get("images") is not None:
@@ -186,30 +206,20 @@ class BaseConverter:
         Extracts tool message.
         """
         return self.format_tools.extract(content)
-        
-    # def _replace_tokens(self, template: str, **kwargs) -> str:
-    #     """Replace template variables with actual values."""
-    #     result = template
-    #     for key, value in kwargs.items():
-    #         result = result.replace("{{" + key + "}}", str(value))
-    #     return result
 
     def _replace_tokens(self, template: str, **kwargs) -> str:
-        """템플릿의 특수 토큰과 변수를 치환"""
         result = template
-        
-        # 특수 토큰 처리
-        special_tokens = {
-            "{{bos_token}}": self.tokenizer.bos_token or "",
-            "{{eos_token}}": self.tokenizer.eos_token or "",
-        }
-        
-        for token, value in special_tokens.items():
-            result = result.replace(token, value)
-        
-        # 변수 치환
+
         for key, value in kwargs.items():
             result = result.replace(f"{{{{{key}}}}}", str(value))
+        
+        token_pattern = r'\{\{(\w+_token)\}\}'
+        
+        for match in re.finditer(token_pattern, result):
+            token_name = match.group(1)
+            
+            token_value = getattr(self.tokenizer, token_name, "")
+            result = result.replace(f"{{{{{token_name}}}}}", token_value)
             
         return result
 
@@ -230,22 +240,21 @@ class BaseConverter:
         for i, message in enumerate(messages):
             current_message = ""
             
-            # 첫 메시지 처리
             if i == 0:
-                current_message += self.template.format_prefix  # 변경: .apply() 제거
+                current_message += self.template.format_prefix
                 if system or tools:
                     tool_text = self._replace_tokens(self.template.format_tools, content=tools) if tools else ""
-                    current_message += self._replace_tokens(self.template.format_system, content=(system + tool_text))
+                    if self.template.system_style == "standard":
+                        current_message += self._replace_tokens(self.template.format_system, content=(system + tool_text))
 
-            # 구분자 추가
             if i > 0 and i % 2 == 0:
-                current_message += self.template.format_separator  # 변경: .apply() 제거
+                current_message += self.template.format_separator
 
             # 역할별 메시지 처리
             if message["role"] == Role.USER:
                 current_message += self._replace_tokens(
                     self.template.format_user,
-                    content=message["content"],
+                    content=message["content"] if self.template.system_style == "standard" else system + message["content"],
                     idx=str(i // 2)
                 )
             elif message["role"] == Role.ASSISTANT:
@@ -266,33 +275,8 @@ class BaseConverter:
             else:
                 raise NotImplementedError(f"Unexpected role: {message['role']}")
 
-            # 토크나이징
             encoded_messages.append(self.tokenizer.encode(current_message, add_special_tokens=False))
-            # import pdb;pdb.set_trace()
         return encoded_messages
-
-    def _convert_elements_to_ids(self, elements: "SLOTS") -> List[int]:
-        r"""
-        Converts elements to token ids.vkfd
-        """
-        token_ids = []
-
-        
-        for elem in elements:
-            if isinstance(elem, str):
-                if len(elem) != 0:
-                    token_ids += self.tokenizer.encode(elem, add_special_tokens=False)
-            elif isinstance(elem, dict):
-                token_ids += [self.tokenizer.convert_tokens_to_ids(elem.get("token"))]
-            elif isinstance(elem, set):
-                if "bos_token" in elem and self.tokenizer.bos_token_id is not None:
-                    token_ids += [self.tokenizer.bos_token_id]
-                elif "eos_token" in elem and self.tokenizer.eos_token_id is not None:
-                    token_ids += [self.tokenizer.eos_token_id]
-            else:
-                raise ValueError("Input must be string, set[str] or dict[str, str], got {}".format(type(elem)))
-
-        return token_ids
     
 
 class Qwen2vlConverter(BaseConverter):
@@ -318,7 +302,6 @@ class Qwen2vlConverter(BaseConverter):
         mm_inputs = self.get_mm_inputs(images, videos, **kwargs)
         image_grid_thw = mm_inputs.get("image_grid_thw", [])
         video_grid_thw = mm_inputs.get("video_grid_thw", [])
-
         num_image_tokens, num_video_tokens = 0, 0
         messages = deepcopy(messages)
         for message in messages:
@@ -374,7 +357,6 @@ def get_mm_converter(
         raise ValueError(f"Invalid converter name: {name}")
 
     return converter_class(template, processor, image_token, video_token)
-
 
 
 def load_converter(processor, data_args, image_token=None, video_token=None):
