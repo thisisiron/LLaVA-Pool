@@ -233,7 +233,7 @@ class DataArguments:
         default=False,
         metadata={"help": "Whether to mask history"}
     )
-    val_split: float = field(
+    val_size: float = field(
         default=0.0,
         metadata={"help": "Validation split ratio"}
     )
