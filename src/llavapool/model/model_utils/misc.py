@@ -14,7 +14,7 @@
 
 from typing import TYPE_CHECKING, List
 
-from ...extras.logging import get_logger
+from ...utils.logging import get_logger
 
 
 if TYPE_CHECKING:

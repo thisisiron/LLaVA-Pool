@@ -33,9 +33,9 @@ from transformers.models.llama.modeling_llama import (
 from transformers.utils import logging
 from transformers.utils.versions import require_version
 
-from ...extras.constants import SUPPORTED_CLASS_FOR_S2ATTN
-from ...extras.logging import get_logger
-from ...extras.packages import is_transformers_version_greater_than_4_43
+from ...utils.constants import SUPPORTED_CLASS_FOR_S2ATTN
+from ...utils.logging import get_logger
+from ...utils.packages import is_transformers_version_greater_than_4_43
 
 
 if TYPE_CHECKING:

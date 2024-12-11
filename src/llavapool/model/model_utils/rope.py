@@ -19,7 +19,7 @@
 import math
 from typing import TYPE_CHECKING
 
-from ...extras.logging import get_logger
+from ...utils.logging import get_logger
 
 
 if TYPE_CHECKING:

@@ -28,9 +28,9 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import is_fsdp_enabled
 from transformers.utils.versions import require_version
 
-from ...extras.constants import FILEEXT2TYPE
-from ...extras.logging import get_logger
-from ...extras.misc import get_current_device
+from ...utils.constants import FILEEXT2TYPE
+from ...utils.logging import get_logger
+from ...utils.misc import get_current_device
 
 
 if TYPE_CHECKING:

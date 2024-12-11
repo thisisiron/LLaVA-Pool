@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from transformers.utils import is_flash_attn_2_available, is_torch_sdpa_available
 from transformers.utils.versions import require_version
 
-from ...extras.logging import get_logger
+from ...utils.logging import get_logger
 
 
 if TYPE_CHECKING:

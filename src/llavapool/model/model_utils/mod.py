@@ -14,7 +14,7 @@
 
 from typing import TYPE_CHECKING
 
-from ...extras.constants import MOD_SUPPORTED_MODELS
+from ...utils.constants import MOD_SUPPORTED_MODELS
 
 
 if TYPE_CHECKING:

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 import torch
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from ...extras.logging import get_logger
+from ...utils.logging import get_logger
 
 
 if TYPE_CHECKING:

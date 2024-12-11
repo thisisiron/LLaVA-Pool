@@ -25,8 +25,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
 
-from ...extras.constants import LAYERNORM_NAMES
-from ...extras.logging import get_logger
+from ...utils.constants import LAYERNORM_NAMES
+from ...utils.logging import get_logger
 
 
 if TYPE_CHECKING:

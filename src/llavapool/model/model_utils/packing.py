@@ -43,9 +43,9 @@ import torch
 import torch.nn.functional as F
 from transformers.utils.versions import require_version
 
-from ...extras.constants import SUPPORTED_CLASS_FOR_BLOCK_DIAG_ATTN
-from ...extras.logging import get_logger
-from ...extras.packages import is_transformers_version_greater_than_4_43
+from ...utils.constants import SUPPORTED_CLASS_FOR_BLOCK_DIAG_ATTN
+from ...utils.logging import get_logger
+from ...utils.packages import is_transformers_version_greater_than_4_43
 
 
 if TYPE_CHECKING:

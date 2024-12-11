@@ -22,8 +22,8 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase, is_torch_npu_
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import is_fsdp_enabled
 
-from ..extras.logging import get_logger
-from ..extras.misc import infer_optim_dtype
+from ..utils.logging import get_logger
+from ..utils.misc import infer_optim_dtype
 from .model_utils.attention import configure_attn_implementation, print_attn_implementation
 from .model_utils.checkpointing import prepare_model_for_training
 from .model_utils.embedding import resize_embedding_layer

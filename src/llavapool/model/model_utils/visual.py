@@ -22,7 +22,7 @@ import transformers.models
 from transformers.activations import ACT2FN
 from transformers.utils import logging
 
-from ...extras.logging import get_logger
+from ...utils.logging import get_logger
 
 
 if TYPE_CHECKING:

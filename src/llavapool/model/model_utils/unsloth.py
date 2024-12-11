@@ -14,8 +14,8 @@
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from ...extras.logging import get_logger
-from ...extras.misc import get_current_device
+from ...utils.logging import get_logger
+from ...utils.misc import get_current_device
 
 
 if TYPE_CHECKING:
