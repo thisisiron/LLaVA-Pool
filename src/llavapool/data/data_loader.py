@@ -3,7 +3,6 @@ from collections import defaultdict
 import os
 from typing import Dict, List, Literal, Optional, Tuple, Union, Any
 
-
 from datasets import DatasetDict, load_dataset
 from datasets import Dataset, IterableDataset
 from transformers import logging
@@ -13,14 +12,11 @@ from transformers import (
     ProcessorMixin,
 )
 
-from llavapool.data.dataset_config import (
-    DatasetConfig,
+from .dataset_config import (
     get_dataset_config,
 )
-from llavapool.config.params import (
-    DataArguments,
-    ModelArguments,
-)
+from .collator import SFTDataCollatorWith4DAttentionMask
+from ..utils.constants import IGNORE_INDEX
 
 
 logger = logging.get_logger(__name__)
@@ -41,8 +37,8 @@ class Role:
 
 def convert_sharegpt(
     example: dict,
-    dataset_config: DatasetConfig,
-    data_args: DataArguments,
+    dataset_config: "DatasetConfig",
+    data_args: "DataArguments",
 ):
     """
     Converts a ShareGPT-format conversation example into a standardized internal format used for training.
@@ -108,9 +104,13 @@ def convert_sharegpt(
         if isinstance(example[dataset_config.common.images], str):
             images = [os.path.join(data_args.dataset_dir, example[dataset_config.common.images])]
         elif isinstance(example[dataset_config.common.images], list):
-            images = []
-            for idx in range(len(example[dataset_config.common.images])):
-                images.append(os.path.join(data_args.dataset_dir, example[dataset_config.common.images][idx]))
+            if len(example[dataset_config.common.images]) == 0:
+                logger.warning(f"Empty image list in example: {messages}")
+                images = None
+            else:
+                images = []
+                for idx in range(len(example[dataset_config.common.images])):
+                    images.append(os.path.join(data_args.dataset_dir, example[dataset_config.common.images][idx]))
 
     videos = None
     if dataset_config.common.videos is not None:
@@ -133,9 +133,9 @@ def convert_sharegpt(
 
 def convert_dataset(
     dataset,
-    dataset_config: DatasetConfig,
-    data_args: DataArguments,
-    training_args: TrainingArguments,
+    dataset_config: "DatasetConfig",
+    data_args: "DataArguments",
+    training_args: "TrainingArguments",
     format: str = "sharegpt",
 ):
     kwargs = {}
@@ -147,13 +147,15 @@ def convert_dataset(
     column_names = list(next(iter(dataset)).keys())
     
     if format == "sharegpt":
-        dataset = dataset.map(
-            lambda x: convert_sharegpt(x, dataset_config, data_args),
-            batched=False,
-            desc="Converting dataset to ShareGPT format",
-            remove_columns=column_names,
-            **kwargs
-        )
+        formatting_func = convert_sharegpt
+
+    dataset = dataset.map(
+        lambda x: formatting_func(x, dataset_config, data_args),
+        batched=False,
+        desc="Converting dataset to ShareGPT format",
+        remove_columns=column_names,
+        **kwargs
+    )
     return dataset
     
 
@@ -174,7 +176,6 @@ def infer_seqlen(source_len: int, target_len: int, cutoff_len: int) -> Tuple[int
     return new_source_len, new_target_len
 
 
-IGNORE_INDEX = -100
 def _encode_supervised_example(
     prompt: List[Dict[str, str]],  # [{"role": "user", "content": "text"}, ...]
     response: List[Dict[str, str]],  # [{"role": "assistant", "content": "text"}, ...]
@@ -183,29 +184,13 @@ def _encode_supervised_example(
     system: Optional[str] = None,
     tools: Optional[str] = None,
     converter: str = None,
-    tokenizer: PreTrainedTokenizer = None,
-    processor: ProcessorMixin = None,
+    tokenizer: "PreTrainedTokenizer" = None,
+    processor: "ProcessorMixin" = None,
     cutoff_len: int = 1024,
     train_on_prompt: bool = False,
     mask_history: bool = False,
-    data_args: DataArguments = None,
+    data_args: "DataArguments" = None,
 ):
-    # messages = template.mm_converter.process_media_tokens(
-    #     prompt + response, 
-    #     images, 
-    #     videos, 
-    #     processor, 
-    #     max_pixels=data_args.max_pixels,
-    #     min_pixels=data_args.min_pixels
-    # )
-
-    # input_ids, labels = [], []
-    # encoded_pairs = template.encode_multi_turn(
-    #     tokenizer=tokenizer,
-    #     messages=messages,
-    #     system=system,
-    #     tools=tools,
-    # )
 
     input_ids, labels = [], []
     encoded_pairs = converter.encode_multi_turn(
@@ -301,10 +286,10 @@ def preprocess_superivsed_dataset(
 def get_superivsed_dataset(
     dataset,
     converter,
-    tokenizer: PreTrainedTokenizer,
-    processor: ProcessorMixin,
-    data_args: DataArguments,
-    training_args: TrainingArguments,
+    tokenizer: "PreTrainedTokenizer",
+    processor: "ProcessorMixin",
+    data_args: "DataArguments",
+    training_args: "TrainingArguments",
 ):
     if dataset is None:
         return dataset
@@ -348,46 +333,81 @@ def split_dataset(
         return DatasetDict({"train": dataset["train"], "validation": dataset["test"]})
 
 
-
+from datasets import concatenate_datasets
 def load_dataset_module(
     converter,
-    data_args: DataArguments,
-    model_args: ModelArguments,
-    training_args: TrainingArguments,
-    tokenizer: PreTrainedTokenizer,
-    processor: ProcessorMixin = None,
+    data_args: "DataArguments",
+    model_args: "ModelArguments",
+    training_args: "TrainingArguments",
+    tokenizer: "PreTrainedTokenizer",
+    processor: "ProcessorMixin" = None,
     stage: str = "sft",
 ):
-    dataset_config = get_dataset_config(data_args.dataset_dir, data_args.dataset)
+    
+    datasets = []
+    for dataset_name in data_args.dataset:
+        dataset_config = get_dataset_config(data_args.dataset_dir, dataset_name)
 
-    logger.info(f"Loading dataset {data_args.dataset}...")
-    data_path, data_name, data_dir = None, None, None
+        logger.info(f"Loading dataset {data_args.dataset}...")
+        data_path, data_name, data_dir = None, None, None
+        
+        data_files = []
+        data_path = os.path.join(data_args.dataset_dir, dataset_config.file_name)
+        if os.path.isfile(data_path):  # is file
+            data_files.append(data_path)
+            file_format = data_path.split(".")[-1]
+            data_path = file_format
+        else:
+            raise ValueError(f"File {data_path} not found.")
+        
+        dataset = load_dataset(
+            path=data_path,
+            name=data_name,
+            data_dir=data_dir,
+            data_files=data_files,
+            split=dataset_config.split,
+            cache_dir=model_args.cache_dir,
+            # token=model_args.hf_hub_token,
+            streaming=data_args.streaming,
+            trust_remote_code=True,
+        )
+        with training_args.main_process_first(desc="load dataset"):
+            dataset = convert_dataset(dataset, dataset_config, data_args, training_args, format=dataset_config.formatting)
+        datasets.append(dataset)
     
-    data_files = []
-    data_path = os.path.join(data_args.dataset_dir, dataset_config.file_name)
-    if os.path.isfile(data_path):  # is file
-        data_files.append(data_path)
-        file_format = data_path.split(".")[-1]
-        data_path = file_format
-    else:
-        raise ValueError(f"File {data_path} not found.")
+    if len(datasets) > 1:
+        dataset = concatenate_datasets(datasets)
+
+    # dataset_config = get_dataset_config(data_args.dataset_dir, data_args.dataset)
+
+    # logger.info(f"Loading dataset {data_args.dataset}...")
+    # data_path, data_name, data_dir = None, None, None
     
-    dataset = load_dataset(
-        path=data_path,
-        name=data_name,
-        data_dir=data_dir,
-        data_files=data_files,
-        split=dataset_config.split,
-        cache_dir=model_args.cache_dir,
-        # token=model_args.hf_hub_token,
-        streaming=data_args.streaming,
-        # trust_remote_code=True,
-    )
+    # data_files = []
+    # data_path = os.path.join(data_args.dataset_dir, dataset_config.file_name)
+    # if os.path.isfile(data_path):  # is file
+    #     data_files.append(data_path)
+    #     file_format = data_path.split(".")[-1]
+    #     data_path = file_format
+    # else:
+    #     raise ValueError(f"File {data_path} not found.")
     
-    with training_args.main_process_first(desc="load dataset"):
-        dataset = convert_dataset(dataset, dataset_config, data_args, training_args, format=dataset_config.formatting)
+    # dataset = load_dataset(
+    #     path=data_path,
+    #     name=data_name,
+    #     data_dir=data_dir,
+    #     data_files=data_files,
+    #     split=dataset_config.split,
+    #     cache_dir=model_args.cache_dir,
+    #     # token=model_args.hf_hub_token,
+    #     streaming=data_args.streaming,
+    #     # trust_remote_code=True,
+    # )
+    # with training_args.main_process_first(desc="loading dataset..."):
+    #     dataset = convert_dataset(dataset, dataset_config, data_args, training_args, format=dataset_config.formatting)
+
     
-    with training_args.main_process_first(desc="pre-process dataset"):
+    with training_args.main_process_first(desc="pre-processing dataset..."):
         dataset = get_superivsed_dataset(dataset, converter, tokenizer, processor, data_args, training_args)
 
         if data_args.val_size > 1e-6:

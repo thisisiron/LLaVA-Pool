@@ -25,8 +25,8 @@ import torch
 from transformers import Seq2SeqTrainer
 from typing_extensions import override
 
-from ...extras.constants import IGNORE_INDEX
-from ...extras.logging import get_logger
+from ...utils.constants import IGNORE_INDEX
+from ...utils.logging import get_logger
 from ..callbacks import PissaConvertCallback, SaveProcessorCallback
 from ..trainer_utils import create_custom_optimizer, create_custom_scheduler
 

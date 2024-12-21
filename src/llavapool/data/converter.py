@@ -6,8 +6,9 @@ from PIL import Image
 import numpy as np
 from decord import VideoReader
 from typing_extensions import override
+from transformers.image_utils import get_image_size, to_numpy_array
 
-from ..utils.constants import IMAGE_TOKEN, VIDEO_TOKEN
+from ..utils.constants import IMAGE_PLACEHOLDER, VIDEO_PLACEHOLDER
 from .template import get_template_and_fix_tokenizer
 from .data_loader import Role
 
@@ -45,7 +46,7 @@ def basic_resize(image, image_resolution: int = 512):
         resize_factor = image_resolution / max(image.width, image.height)
         resized_width = int(image.width * resize_factor)
         resized_height = int(image.height * resize_factor)
-        image.resize((resized_width, resized_height))
+        image = image.resize((resized_width, resized_height))
     return image
 
 
@@ -76,13 +77,13 @@ def smart_resize(
         
 
 class BaseConverter:
-    def __init__(self, template, processor, image_token=None, video_token=None):
+    def __init__(self, template, processor):
         self.template = template
         self.processor = processor
         self.tokenizer = processor.tokenizer
 
-        self.image_token = image_token
-        self.video_token = video_token
+        self.image_token = template.image_token
+        self.video_token = template.video_token
 
     def _check_input(self, images, videos):
         if len(images) >= 1 and self.image_token is None:
@@ -96,7 +97,7 @@ class BaseConverter:
     def __call__(self):
         return self.convert()
 
-    def process_image(self, image, **kwargs):
+    def _preprocess_image(self, image, **kwargs):
         image = image.convert("RGB")
         image = basic_resize(image, image_resolution=kwargs.get("image_resolution", 512))
         return image
@@ -113,7 +114,7 @@ class BaseConverter:
             if pil_image is None:
                 raise ValueError("Invalid image type")
             
-            pil_image = self.process_image(pil_image, **kwargs)
+            pil_image = self._preprocess_image(pil_image, **kwargs)
             preprocessed_images.append(pil_image)
 
         return preprocessed_images
@@ -156,7 +157,7 @@ class BaseConverter:
 
         return sample_frames
     
-    def get_mm_inputs(self, images, videos, seq_lens=None, **kwargs):
+    def get_visual_inputs(self, images, videos, seq_lens=None, **kwargs):
         image_processor = self.processor.image_processor
         video_processor = getattr(self.processor, 'video_processor', None) or image_processor
 
@@ -175,13 +176,12 @@ class BaseConverter:
                 **kwargs
         )
         
-        mm_inputs = {}
+        visual_inputs = {}
         if input_dict.get("images") is not None:
-            mm_inputs.update(image_processor(input_dict["images"], return_tensors="pt"))
+            visual_inputs.update(image_processor(input_dict["images"], return_tensors="pt"))
         if input_dict.get("videos") is not None:
-            mm_inputs.update(video_processor(input_dict["videos"], return_tensors="pt"))
-
-        return mm_inputs
+            visual_inputs.update(video_processor(input_dict["videos"], return_tensors="pt"))
+        return visual_inputs
 
     def process_media_tokens(self, messages, images, videos):
         raise NotImplementedError("This method must be implemented in the subclass")
@@ -211,15 +211,15 @@ class BaseConverter:
         result = template
 
         for key, value in kwargs.items():
-            result = result.replace(f"{{{{{key}}}}}", str(value))
+            result = result.replace("{{" + key + "}}", str(value))
         
-        token_pattern = r'\{\{(\w+_token)\}\}'
+        token_pattern = r'\{\{(\w+_token)\}\}'  # ex. bos_token, eos_token
         
         for match in re.finditer(token_pattern, result):
             token_name = match.group(1)
             
             token_value = getattr(self.tokenizer, token_name, "")
-            result = result.replace(f"{{{{{token_name}}}}}", token_value)
+            result = result.replace("{{" + token_name + "}}", token_value)
             
         return result
 
@@ -280,8 +280,22 @@ class BaseConverter:
     
 
 class Qwen2vlConverter(BaseConverter):
-    def __init__(self, template, processor, image_token=None, video_token=None):
-        super().__init__(template, processor, "<|image_pad|>", "<|video_pad|>")
+    @override
+    def _preprocess_image(self, image: "ImageObject", **kwargs) -> "ImageObject":
+        image = super()._preprocess_image(image, **kwargs)
+        if min(image.width, image.height) < 28:
+            width, height = max(image.width, 28), max(image.height, 28)
+            image = image.resize((width, height), resample=Image.NEAREST)
+
+        if image.width / image.height > 200:
+            width, height = image.height * 180, image.height
+            image = image.resize((width, height), resample=Image.NEAREST)
+
+        if image.height / image.width > 200:
+            width, height = image.width, image.width * 180
+            image = image.resize((width, height), resample=Image.NEAREST)
+
+        return image
 
     @override
     def _get_sample_frames(self, total_frames, video_fps, **kwargs) -> int:
@@ -299,49 +313,114 @@ class Qwen2vlConverter(BaseConverter):
         self._check_input(images, videos)
         image_processor = self.processor.image_processor
         merge_length: int = image_processor.merge_size ** 2
-        mm_inputs = self.get_mm_inputs(images, videos, **kwargs)
-        image_grid_thw = mm_inputs.get("image_grid_thw", [])
-        video_grid_thw = mm_inputs.get("video_grid_thw", [])
+        visual_inputs = self.get_visual_inputs(images, videos, **kwargs)
+        image_grid_thw = visual_inputs.get("image_grid_thw", [])
+        video_grid_thw = visual_inputs.get("video_grid_thw", [])
         num_image_tokens, num_video_tokens = 0, 0
         messages = deepcopy(messages)
         for message in messages:
             content = message["content"]
-            while IMAGE_TOKEN in content:
+            while IMAGE_PLACEHOLDER in content:
                 if num_image_tokens >= len(image_grid_thw):
-                    raise ValueError(f"`len(images)` is less than the number of {IMAGE_TOKEN} tokens.")
+                    raise ValueError(f"`len(images)` is less than the number of {IMAGE_PLACEHOLDER} tokens.")
 
                 content = content.replace(
-                    IMAGE_TOKEN,
+                    IMAGE_PLACEHOLDER,
                     f"<|vision_start|>{self.image_token * (image_grid_thw[num_image_tokens].prod() // merge_length)}<|vision_end|>",
                     1,
                 )
                 num_image_tokens += 1
 
-            while VIDEO_TOKEN in content:
+            while VIDEO_PLACEHOLDER in content:
                 if num_video_tokens >= len(video_grid_thw):
-                    raise ValueError(f"`len(videos)` is less than the number of {VIDEO_TOKEN} tokens.")
+                    raise ValueError(f"`len(videos)` is less than the number of {VIDEO_PLACEHOLDER} tokens.")
 
                 content = content.replace(
-                    VIDEO_TOKEN,
+                    VIDEO_PLACEHOLDER,
                     "<|vision_start|>{self.video_token * (video_grid_thw[num_video_tokens].prod() // merge_length)}<|vision_end|>",         
                     1,
                 )
                 num_video_tokens += 1
 
             message["content"] = content
-
         if len(images) != num_image_tokens:
-            raise ValueError(f"Number of {IMAGE_TOKEN} tokens does not match the number of images.")
+            raise ValueError(f"Number of {IMAGE_PLACEHOLDER} tokens does not match the number of images.")
 
         if len(videos) != num_video_tokens:
-            raise ValueError(f"Number of {VIDEO_TOKEN} tokens does not match the number of videos.")
+            raise ValueError(f"Number of {VIDEO_PLACEHOLDER} tokens does not match the number of videos.")
+        return messages
+
+
+
+class LlavaNextConverter(BaseConverter):
+    @override
+    def process_media_tokens(
+        self,
+        messages: Sequence[Dict[str, str]],
+        images: Sequence["ImageInput"],
+        videos: Sequence["VideoInput"],
+    ) -> List[Dict[str, str]]:
+        self._check_input(images, videos)
+        num_image_tokens = 0
+        messages = deepcopy(messages)
+        visual_inputs = self.get_visual_inputs(images, videos)
+        import pdb; pdb.set_trace()
+
+        if "image_sizes" in visual_inputs:
+            image_sizes = iter(visual_inputs["image_sizes"])
+
+        if "pixel_values" in visual_inputs:
+            height, width = get_image_size(to_numpy_array(visual_inputs["pixel_values"][0][0]))
+
+        for message in messages:
+            content = message["content"]
+            while self.image_token in content:
+                image_size = next(image_sizes)
+                orig_height, orig_width = image_size
+                image_seqlen = self.processor._get_number_of_features(orig_height, orig_width, height, width)
+                if self.processor.vision_feature_select_strategy == "default":
+                    image_seqlen -= 1
+                num_image_tokens += 1
+                content = content.replace(self.image_token, "{{image}}" * image_seqlen, 1)
+
+            message["content"] = content.replace("{{image}}", self.image_token)
+
+        if len(images) != num_image_tokens:
+            raise ValueError("The number of images does not match the number of {} tokens".format(IMAGE_PLACEHOLDER))
+        return messages
+
+
+class BasicConverter(BaseConverter):
+    @override
+    def process_media_tokens(
+        self,
+        messages: Sequence[Dict[str, str]],
+        images: Sequence["ImageInput"],
+        videos: Sequence["VideoInput"],
+    ) -> List[Dict[str, str]]:
+        self._check_input(images, videos)
+        num_image_tokens = 0
+        messages = deepcopy(messages)
+        for message in messages:
+            content = message["content"]
+            while IMAGE_PLACEHOLDER in content:
+                num_image_tokens += 1
+                content = content.replace(IMAGE_PLACEHOLDER, "{{image}}", 1)
+
+            message["content"] = content.replace("{{image}}", self.image_token)
+
+        if len(images) != num_image_tokens:
+            raise ValueError("The number of images does not match the number of {} tokens".format(IMAGE_PLACEHOLDER))
 
         return messages
+        
 
 
 CONVERTERS = {
     "base": BaseConverter,
     "qwen2_vl": Qwen2vlConverter,
+    "llava_next": LlavaNextConverter,
+    "llama3": BasicConverter,
 }
 
 
@@ -349,19 +428,18 @@ def get_mm_converter(
     name: str,
     template,
     processor,
-    image_token: Optional[str] = None,
-    video_token: Optional[str] = None,
 ):
     converter_class = CONVERTERS.get(name, None)
     if converter_class is None:
         raise ValueError(f"Invalid converter name: {name}")
 
-    return converter_class(template, processor, image_token, video_token)
+    return converter_class(template, processor)
 
 
-def load_converter(processor, data_args, image_token=None, video_token=None):
+def load_converter(processor, data_args):
     
     template = get_template_and_fix_tokenizer(processor.tokenizer, data_args)
+
     converter = get_mm_converter(data_args.template, template, processor)
 
     return converter

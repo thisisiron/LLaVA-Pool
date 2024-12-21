@@ -89,16 +89,18 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
             batch_vidlens.append(len(videos))
             batch_seqlens.append(len(feature["input_ids"]))
 
-        mm_inputs = self.converter.get_mm_inputs(
+        visual_inputs = self.converter.get_visual_inputs(
             images=batch_images, videos=batch_videos, seq_lens=batch_seqlens
         )
-        if "token_type_ids" in mm_inputs:
-            token_type_ids = mm_inputs.pop("token_type_ids")
+
+        if "token_type_ids" in visual_inputs:
+            token_type_ids = visual_inputs.pop("token_type_ids")
             for i, feature in enumerate(features):
                 feature["token_type_ids"] = token_type_ids[i]
 
         features: Dict[str, "torch.Tensor"] = super().__call__(features)
-        features.update(mm_inputs)
+        features.update(visual_inputs)
+
         return features
 
 

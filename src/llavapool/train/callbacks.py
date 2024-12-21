@@ -34,9 +34,9 @@ from transformers.utils import (
 )
 from typing_extensions import override
 
-from ..extras.constants import TRAINER_LOG, V_HEAD_SAFE_WEIGHTS_NAME, V_HEAD_WEIGHTS_NAME
-from ..extras.logging import LoggerHandler, get_logger
-from ..extras.misc import get_peak_memory
+from ..utils.constants import TRAINER_LOG, V_HEAD_SAFE_WEIGHTS_NAME, V_HEAD_WEIGHTS_NAME
+from ..utils.logging import LoggerHandler, get_logger
+from ..utils.misc import get_peak_memory
 
 
 if is_safetensors_available():

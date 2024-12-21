@@ -23,9 +23,9 @@ import numpy as np
 import torch
 from transformers.utils import is_jieba_available, is_nltk_available
 
-from ...extras.constants import IGNORE_INDEX
-from ...extras.misc import numpify
-from ...extras.packages import is_rouge_available
+from ...utils.constants import IGNORE_INDEX
+from ...utils.misc import numpify
+from ...utils.packages import is_rouge_available
 
 
 if TYPE_CHECKING:

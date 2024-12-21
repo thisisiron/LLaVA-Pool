@@ -49,6 +49,8 @@ class Template:
     replace_eos: bool
     replace_jinja_template: bool
     system_style: str
+    image_token: str
+    video_token: str
 
 
 TEMPLATES: Dict[str, "Template"] = {}
@@ -65,9 +67,11 @@ def _register_template(
     format_separator: Optional[str] = None,
     format_prefix: Optional[str] = None,
     default_system: str = "",
+    image_token: str = "<image>",
+    video_token: str = "<video>",
     stop_words: Sequence[str] = [],
     efficient_eos: bool = False,
-    replace_eos: bool = False,
+    replace_eos: bool = False,  # replace eos_token with stop_words[0]
     replace_jinja_template: bool = True,
 ) -> None:
     r"""
@@ -96,19 +100,19 @@ def _register_template(
     )
     ```
     """
-    eos_token = "" if efficient_eos else "{{eos_token}}"
-    default_user_formatter = "{{content}}"
-    default_assistant_formatter = f"{{{{content}}}}{eos_token}"
+    # eos_token = "" if efficient_eos else "{{eos_token}}"
+    # default_user_formatter = "{{content}}"
+    # default_assistant_formatter = "{{content}}" + f"{eos_token}"
     default_separator_formatter = ""
     default_prefix_formatter = ""
     default_system_style = "standard"
     TEMPLATES[name] = Template(
-        format_user=format_user or default_user_formatter,
-        format_assistant=format_assistant or default_assistant_formatter,
-        format_system=format_system or default_user_formatter,
+        format_user=format_user,
+        format_assistant=format_assistant,
+        format_system=format_system,
         # format_function=format_function or default_function_formatter,
         format_function="",
-        format_observation=format_observation or format_user or default_user_formatter,
+        format_observation=format_observation or format_user,
         # format_tools=format_tools or default_tool_formatter,
         format_tools="",
         format_separator=format_separator or default_separator_formatter,
@@ -119,6 +123,8 @@ def _register_template(
         replace_eos=replace_eos,
         replace_jinja_template=replace_jinja_template,
         system_style=default_system_style,
+        image_token=image_token,
+        video_token=video_token,
     )
 
 
@@ -283,15 +289,35 @@ def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: 
 
 _register_template(
     name="default",
-    format_user="Human: {{content}}\nAssistant:",  # 변경: StringFormatter -> str
-    format_system="{{content}}\n",  # 변경
-    format_separator="\n",  # 변경
+    format_user="Human: {{content}}\nAssistant:",
+    format_system="{{content}}\n",
+    format_separator="\n",
 )
 
 
 _register_template(
     name="empty",
     efficient_eos=True,
+)
+
+
+_register_template(
+    name="llama3",
+    format_prefix="<|begin_of_text|>",
+    format_system="<|start_header_id|>system<|end_header_id|>\n\n{{content}}<|eot_id|>",
+    format_user=(
+            "<|start_header_id|>user<|end_header_id|>\n\n{{content}}<|eot_id|>"
+            "<|start_header_id|>assistant<|end_header_id|>\n\n"
+    ),
+    format_assistant="{{content}}<|eot_id|>",
+    format_observation=(
+        "<|start_header_id|>tool<|end_header_id|>\n\n{{content}}<|eot_id|>"
+        "<|start_header_id|>assistant<|end_header_id|>\n\n"
+    ),
+    stop_words=["<|eot_id|>"],
+    replace_eos=True,
+    replace_jinja_template=False,
+    image_token="<|image|>",
 )
 
 
@@ -308,12 +334,15 @@ _register_template(
 
 _register_template(
     name="qwen2_vl",
-    format_user="<|im_start|>user\n{{content}}<|im_end|>\n<|im_start|>assistant\n",
+    default_system="You are a helpful assistant.",
     format_system="<|im_start|>system\n{{content}}<|im_end|>\n",
+    format_user="<|im_start|>user\n{{content}}<|im_end|>\n<|im_start|>assistant\n",
+    format_assistant="{{content}}<|im_end|>",
     format_observation="<|im_start|>tool\n{{content}}<|im_end|>\n<|im_start|>assistant\n",
     format_separator="\n",
-    default_system="You are a helpful assistant.",
     stop_words=["<|im_end|>"],
     replace_eos=True,
     replace_jinja_template=False,
+    image_token="<|image_pad|>",
+    video_token="<|video_pad|>",
 )

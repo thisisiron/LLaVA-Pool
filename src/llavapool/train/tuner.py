@@ -20,8 +20,8 @@ import torch
 from transformers import PreTrainedModel
 
 from ..data import get_template_and_fix_tokenizer
-from ..extras.constants import V_HEAD_SAFE_WEIGHTS_NAME, V_HEAD_WEIGHTS_NAME
-from ..extras.logging import get_logger
+from ..utils.constants import V_HEAD_SAFE_WEIGHTS_NAME, V_HEAD_WEIGHTS_NAME
+from ..utils.logging import get_logger
 from ..hparams import get_infer_args, get_train_args
 from ..model import load_model, load_tokenizer
 from .callbacks import LogCallback

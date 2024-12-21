@@ -28,9 +28,9 @@ from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.trainer_pt_utils import get_parameter_names
 from typing_extensions import override
 
-from ..extras.constants import IGNORE_INDEX
-from ..extras.logging import get_logger
-from ..extras.packages import is_galore_available
+from ..utils.constants import IGNORE_INDEX
+from ..utils.logging import get_logger
+from ..utils.packages import is_galore_available
 from ..hparams import FinetuningArguments, ModelArguments
 from ..model import find_all_linear_modules, load_model, load_tokenizer, load_valuehead_params
 
