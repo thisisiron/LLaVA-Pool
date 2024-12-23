@@ -115,13 +115,13 @@ class DataArguments:
     )
 
     def __post_init__(self):
-        # def split_arg(arg):
-        #     if isinstance(arg, str):
-        #         return [item.strip() for item in arg.split(",")]
-        #     return arg
+        def split_arg(arg):
+            if isinstance(arg, str):
+                return [item.strip() for item in arg.split(",")]
+            return arg
 
-        # self.dataset = split_arg(self.dataset)
-        # self.eval_dataset = split_arg(self.eval_dataset)
+        self.dataset = split_arg(self.dataset)
+        self.eval_dataset = split_arg(self.eval_dataset)
 
         if self.dataset is None and self.val_size > 1e-6:
             raise ValueError("Cannot specify `val_size` if `dataset` is None.")

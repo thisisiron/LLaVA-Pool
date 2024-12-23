@@ -29,9 +29,9 @@ from transformers.training_args import ParallelMode
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from ..extras.constants import CHECKPOINT_NAMES
-from ..extras.logging import get_logger
-from ..extras.misc import check_dependencies, get_current_device
+from ..utils.constants import CHECKPOINT_NAMES
+from ..utils.logging import get_logger
+from ..utils.misc import check_dependencies, get_current_device
 from .data_args import DataArguments
 from .evaluation_args import EvaluationArguments
 from .finetuning_args import FinetuningArguments

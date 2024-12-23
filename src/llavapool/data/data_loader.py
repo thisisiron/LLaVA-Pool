@@ -371,6 +371,7 @@ def load_dataset_module(
             streaming=data_args.streaming,
             trust_remote_code=True,
         )
+        
         with training_args.main_process_first(desc="load dataset"):
             dataset = convert_dataset(dataset, dataset_config, data_args, training_args, format=dataset_config.formatting)
         datasets.append(dataset)
