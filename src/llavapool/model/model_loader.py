@@ -109,7 +109,6 @@ def load_model(
     config = load_config(model_args)
     patch_config(config, tokenizer, model_args, init_kwargs, is_trainable)
     apply_liger_kernel(config, model_args, is_trainable, require_logits=(finetuning_args.stage not in ["pt", "sft"]))
-
     model = None
     lazy_load = False
     if model_args.use_unsloth:
@@ -129,6 +128,7 @@ def load_model(
                 load_class = AutoModelForVision2Seq
             else:
                 load_class = AutoModelForCausalLM
+                
             if model_args.train_from_scratch:
                 model = load_class.from_config(config)
             else:
@@ -184,5 +184,4 @@ def load_model(
                     name, param.dtype, param.device, param.requires_grad
                 )
             )
-
     return model

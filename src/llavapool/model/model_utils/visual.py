@@ -92,7 +92,7 @@ def autocast_projector_dtype(model: "PreTrainedModel", model_args: "ModelArgumen
 
     if getattr(model, "quantization_method", None):
         model_type = getattr(model.config, "model_type", None)
-        if model_type in ["llava", "llava_next", "llava_next_video", "paligemma", "video_llava"]:
+        if model_type in ["llava", "llava_next", "llava_next_video", "mllama", "paligemma", "video_llava"]:
             mm_projector: "torch.nn.Module" = getattr(model, "multi_modal_projector")
         elif model_type == "qwen2_vl":
             mm_projector: "torch.nn.Module" = getattr(getattr(model, "visual"), "merger")
@@ -112,6 +112,7 @@ def configure_visual_model(config: "PretrainedConfig") -> None:
         "llava",
         "llava_next",
         "llava_next_video",
+        "mllama",
         "paligemma",
         "video_llava",
     ]:  # required for ds zero3 and valuehead models
@@ -131,6 +132,13 @@ def get_forbidden_modules(config: "PretrainedConfig", finetuning_args: "Finetuni
     if model_type in ["llava", "llava_next", "llava_next_video", "paligemma", "video_llava"]:
         if finetuning_args.freeze_vision_tower:
             forbidden_modules.add("vision_tower")
+
+        if finetuning_args.train_mm_proj_only:
+            forbidden_modules.add("language_model")
+    
+    elif model_type == "mllama":
+        if finetuning_args.freeze_vision_tower:
+            forbidden_modules.add("vision_model")
 
         if finetuning_args.train_mm_proj_only:
             forbidden_modules.add("language_model")
@@ -188,6 +196,8 @@ def patch_target_modules(
     if finetuning_args.freeze_vision_tower:
         if model_type in ["llava", "llava_next", "llava_next_video", "paligemma", "video_llava"]:
             return "^(?!.*vision_tower).*(?:{}).*".format("|".join(target_modules))
+        elif model_type == "mllama":
+            return "^(?!.*vision_model).*(?:{}).*".format("|".join(target_modules))
         elif model_type == "qwen2_vl":
             return "^(?!.*visual).*(?:{}).*".format("|".join(target_modules))
         else:
