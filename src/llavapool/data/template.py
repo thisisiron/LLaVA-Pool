@@ -20,14 +20,6 @@ from transformers.utils.versions import require_version
 from typing_extensions import override
 
 from .data_loader import Role
-from .formatter import EmptyFormatter, FunctionFormatter, StringFormatter, ToolFormatter
-# from .converter import get_mm_converter, BaseConverter
-
-if TYPE_CHECKING:
-    from transformers import PreTrainedTokenizer
-
-    from ..config.params import DataArguments
-    from .formatter import SLOTS, Formatter
 
 
 logger = logging.get_logger(__name__)
@@ -248,11 +240,11 @@ def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: 
     if data_args.train_on_prompt and template.efficient_eos:
         raise ValueError("Current template does not support `train_on_prompt`.")
 
-    if data_args.tool_format is not None:
-        logger.info("Using tool format: {}.".format(data_args.tool_format))
-        eos_slots = [] if template.efficient_eos else [{"eos_token"}]
-        template.format_function = FunctionFormatter(slots=eos_slots, tool_format=data_args.tool_format)
-        template.format_tools = ToolFormatter(tool_format=data_args.tool_format)
+    # if data_args.tool_format is not None:
+    #     logger.info("Using tool format: {}.".format(data_args.tool_format))
+    #     eos_slots = [] if template.efficient_eos else [{"eos_token"}]
+    #     template.format_function = FunctionFormatter(slots=eos_slots, tool_format=data_args.tool_format)
+    #     template.format_tools = ToolFormatter(tool_format=data_args.tool_format)
 
     stop_words = template.stop_words
     if template.replace_eos:

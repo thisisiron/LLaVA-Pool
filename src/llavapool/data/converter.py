@@ -2,11 +2,17 @@ import re
 import math
 from copy import deepcopy
 from typing import Optional, Tuple, List, Dict, Union, Sequence
+from typing_extensions import override
+
+from decord import VideoReader
 from PIL import Image
 import numpy as np
-from decord import VideoReader
-from typing_extensions import override
+import torch
 from transformers.image_utils import get_image_size, to_numpy_array
+from transformers.models.mllama.processing_mllama import (
+    convert_sparse_cross_attention_mask_to_dense,
+    get_cross_attention_token_mask,
+)
 
 from ..utils.constants import IMAGE_PLACEHOLDER, VIDEO_PLACEHOLDER
 from .template import get_template_and_fix_tokenizer
@@ -157,7 +163,7 @@ class BaseConverter:
 
         return sample_frames
     
-    def get_visual_inputs(self, images, videos, seq_lens=None, **kwargs):
+    def get_visual_inputs(self, images, videos, batch_ids=None, seq_lens=None, **kwargs):
         image_processor = self.processor.image_processor
         video_processor = getattr(self.processor, 'video_processor', None) or image_processor
 
@@ -390,7 +396,7 @@ class LlavaNextConverter(BaseConverter):
         return messages
 
 
-class BasicConverter(BaseConverter):
+class MllamaConverter(BaseConverter):
     @override
     def process_media_tokens(
         self,
@@ -403,16 +409,42 @@ class BasicConverter(BaseConverter):
         messages = deepcopy(messages)
         for message in messages:
             content = message["content"]
-            while IMAGE_PLACEHOLDER in content:
-                num_image_tokens += 1
-                content = content.replace(IMAGE_PLACEHOLDER, "{{image}}", 1)
-
-            message["content"] = content.replace("{{image}}", self.image_token)
+            num_image_tokens += content.count(IMAGE_PLACEHOLDER)
+            message["content"] = content.replace(IMAGE_PLACEHOLDER, self.image_token)
 
         if len(images) != num_image_tokens:
-            raise ValueError("The number of images does not match the number of {} tokens".format(IMAGE_PLACEHOLDER))
+            raise ValueError(f"The number of images does not match the number of {IMAGE_PLACEHOLDER} tokens.")
 
         return messages
+
+    def get_visual_inputs(
+        self,
+        images: Sequence["ImageInput"],
+        videos: Sequence["VideoInput"],
+        batch_ids: Sequence[List[int]],
+    ) -> Dict[str, Union[List[int], "torch.Tensor"]]:
+        self._check_input(images, videos)
+        if len(images) != len(batch_ids):
+            raise ValueError("Mllama only supports one image per sample.")
+
+        image_processor: "BaseImageProcessor" = getattr(self.processor, "image_processor")
+        images = self._get_images(images, image_resolution=getattr(self.processor, "image_resolution", 512 * 512))
+        mm_inputs = image_processor([[image] for image in images], return_tensors="pt")
+        num_tiles = mm_inputs.pop("num_tiles")
+        image_token_id = getattr(self.processor, "image_token_id")
+        max_image_tiles = getattr(self.processor.image_processor, "max_image_tiles")
+        cross_attention_token_mask = [
+            get_cross_attention_token_mask(input_ids, image_token_id) for input_ids in batch_ids
+        ]
+        mm_inputs["cross_attention_mask"] = torch.from_numpy(
+            convert_sparse_cross_attention_mask_to_dense(
+                cross_attention_token_mask,
+                num_tiles=num_tiles,
+                max_num_tiles=max_image_tiles,
+                length=max(len(input_ids) for input_ids in batch_ids),
+            )
+        )  # shape: (batch_size, length, max_num_images, max_num_tiles)
+        return mm_inputs
         
 
 
@@ -420,7 +452,7 @@ CONVERTERS = {
     "base": BaseConverter,
     "qwen2_vl": Qwen2vlConverter,
     "llava_next": LlavaNextConverter,
-    "llama3": BasicConverter,
+    "llama3": MllamaConverter,
 }
 
 
@@ -437,7 +469,6 @@ def get_mm_converter(
 
 
 def load_converter(processor, data_args):
-    
     template = get_template_and_fix_tokenizer(processor.tokenizer, data_args)
 
     converter = get_mm_converter(data_args.template, template, processor)
