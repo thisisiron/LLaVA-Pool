@@ -87,6 +87,7 @@ class BaseConverter:
         self.template = template
         self.processor = processor
         self.tokenizer = processor.tokenizer
+        self.expand_mm_tokens = True
 
         self.image_token = template.image_token
         self.video_token = template.video_token
@@ -215,7 +216,7 @@ class BaseConverter:
 
     def _replace_tokens(self, template: str, **kwargs) -> str:
         result = template
-
+        
         for key, value in kwargs.items():
             result = result.replace("{{" + key + "}}", str(value))
         
@@ -256,7 +257,6 @@ class BaseConverter:
             if i > 0 and i % 2 == 0:
                 current_message += self.template.format_separator
 
-            # 역할별 메시지 처리
             if message["role"] == Role.USER:
                 current_message += self._replace_tokens(
                     self.template.format_user,
@@ -417,6 +417,7 @@ class MllamaConverter(BaseConverter):
 
         return messages
 
+    @override
     def get_visual_inputs(
         self,
         images: Sequence["ImageInput"],
@@ -427,16 +428,16 @@ class MllamaConverter(BaseConverter):
         if len(images) != len(batch_ids):
             raise ValueError("Mllama only supports one image per sample.")
 
-        image_processor: "BaseImageProcessor" = getattr(self.processor, "image_processor")
+        image_processor = self.processor.image_processor
         images = self._get_images(images, image_resolution=getattr(self.processor, "image_resolution", 512 * 512))
-        mm_inputs = image_processor([[image] for image in images], return_tensors="pt")
-        num_tiles = mm_inputs.pop("num_tiles")
+        visual_inputs = image_processor([[image] for image in images], return_tensors="pt")
+        num_tiles = visual_inputs.pop("num_tiles")
         image_token_id = getattr(self.processor, "image_token_id")
         max_image_tiles = getattr(self.processor.image_processor, "max_image_tiles")
         cross_attention_token_mask = [
             get_cross_attention_token_mask(input_ids, image_token_id) for input_ids in batch_ids
         ]
-        mm_inputs["cross_attention_mask"] = torch.from_numpy(
+        visual_inputs["cross_attention_mask"] = torch.from_numpy(
             convert_sparse_cross_attention_mask_to_dense(
                 cross_attention_token_mask,
                 num_tiles=num_tiles,
@@ -444,15 +445,80 @@ class MllamaConverter(BaseConverter):
                 length=max(len(input_ids) for input_ids in batch_ids),
             )
         )  # shape: (batch_size, length, max_num_images, max_num_tiles)
-        return mm_inputs
-        
+        return visual_inputs
+
+
+class PixtralConverter(BaseConverter):
+
+    @override
+    def process_media_tokens(
+        self,
+        messages: Sequence[Dict[str, str]],
+        images: Sequence["ImageInput"],
+        videos: Sequence["VideoInput"],
+    ) -> List[Dict[str, str]]:
+        self._check_input(images, videos)
+
+        patch_size = getattr(self.processor, "patch_size")
+        image_token = getattr(self.processor, "image_token")
+        image_break_token = getattr(self.processor, "image_break_token")
+        image_end_token = getattr(self.processor, "image_end_token")
+
+        num_image_tokens = 0
+        messages = deepcopy(messages)
+        visual_inputs = super().get_visual_inputs(images, videos, self.processor)
+        image_input_sizes = visual_inputs.get("image_sizes", None)
+        for message in messages:
+            content = message["content"]
+            while IMAGE_PLACEHOLDER in content:
+                if image_input_sizes is None:
+                    raise ValueError("Cannot get image input sizes.")
+
+                if self.expand_mm_tokens:
+                    image_size = image_input_sizes[0][num_image_tokens]
+                    height, width = image_size
+                    num_height_tokens = height // patch_size
+                    num_width_tokens = width // patch_size
+                    replace_tokens = [[image_token] * num_width_tokens + [image_break_token]] * num_height_tokens
+                    replace_tokens = [item for sublist in replace_tokens for item in sublist]  # flatten list
+                    replace_tokens[-1] = image_end_token
+                    replace_str = "".join(replace_tokens)
+                else:
+                    replace_str = image_token
+
+                content = content.replace(IMAGE_PLACEHOLDER, replace_str, 1)
+                num_image_tokens += 1
+
+            message["content"] = content
+
+        if len(images) != num_image_tokens:
+            raise ValueError(f"The number of images does not match the number of {IMAGE_PLACEHOLDER} tokens.")
+
+        return messages
+
+    @override
+    def get_visual_inputs(
+        self,
+        images: Sequence["ImageInput"],
+        videos: Sequence["VideoInput"],
+        batch_ids: Sequence[List[int]],
+    ) -> Dict[str, Union[List[int], "torch.Tensor"]]:
+        self._check_input(images, videos)
+
+        visual_inputs = super().get_visual_inputs(images, videos)
+        if visual_inputs.get("pixel_values"):
+            visual_inputs["pixel_values"] = visual_inputs["pixel_values"][0]
+
+        visual_inputs.pop("image_sizes", None)
+        return visual_inputs
 
 
 CONVERTERS = {
     "base": BaseConverter,
     "qwen2_vl": Qwen2vlConverter,
     "llava_next": LlavaNextConverter,
-    "llama3": MllamaConverter,
+    "llama3.2_vision": MllamaConverter,
+    "pixtral": PixtralConverter,
 }
 
 
@@ -470,7 +536,6 @@ def get_mm_converter(
 
 def load_converter(processor, data_args):
     template = get_template_and_fix_tokenizer(processor.tokenizer, data_args)
-
     converter = get_mm_converter(data_args.template, template, processor)
 
     return converter

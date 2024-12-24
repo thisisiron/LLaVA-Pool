@@ -93,28 +93,27 @@ def _register_template(
     ```
     """
     # eos_token = "" if efficient_eos else "{{eos_token}}"
-    # default_user_formatter = "{{content}}"
     # default_assistant_formatter = "{{content}}" + f"{eos_token}"
     default_separator_formatter = ""
     default_prefix_formatter = ""
     default_system_style = "standard"
     TEMPLATES[name] = Template(
+        format_prefix=format_prefix or default_prefix_formatter,
+        format_system=format_system,
+        default_system=default_system,
+        system_style=default_system_style,
         format_user=format_user,
         format_assistant=format_assistant,
-        format_system=format_system,
         # format_function=format_function or default_function_formatter,
         format_function="",
-        format_observation=format_observation or format_user,
         # format_tools=format_tools or default_tool_formatter,
         format_tools="",
+        format_observation=format_observation or format_user,
         format_separator=format_separator or default_separator_formatter,
-        format_prefix=format_prefix or default_prefix_formatter,
-        default_system=default_system,
         stop_words=stop_words,
         efficient_eos=efficient_eos,
         replace_eos=replace_eos,
         replace_jinja_template=replace_jinja_template,
-        system_style=default_system_style,
         image_token=image_token,
         video_token=video_token,
     )
@@ -176,13 +175,11 @@ def _convert_str_to_jinja(template: str, tokenizer: "PreTrainedTokenizer", place
 def _get_jinja_template(template: "Template", tokenizer: "PreTrainedTokenizer") -> str:
     jinja_template = ""
 
-    # prefix 처리 수정
     if template.format_prefix:
         prefix = _convert_str_to_jinja(template.format_prefix, tokenizer)
         if prefix:
             jinja_template += "{{ " + prefix + " }}"
 
-    # default system 처리는 동일
     if template.default_system:
         jinja_template += "{% set system_message = '" + _jinja_escape(template.default_system) + "' %}"
 
@@ -271,7 +268,6 @@ def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: 
 
     if template.replace_jinja_template:
         try:
-            import pdb; pdb.set_trace()
             tokenizer.chat_template = _get_jinja_template(template, tokenizer)
         except ValueError:
             logger.info("Cannot add this chat template to tokenizer.")
@@ -281,8 +277,8 @@ def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: 
 
 _register_template(
     name="default",
-    format_user="Human: {{content}}\nAssistant:",
     format_system="{{content}}\n",
+    format_user="Human: {{content}}\nAssistant:",
     format_separator="\n",
 )
 
@@ -294,7 +290,7 @@ _register_template(
 
 
 _register_template(
-    name="llama3",
+    name="llama3.2_vision",
     format_prefix="<|begin_of_text|>",
     format_system="<|start_header_id|>system<|end_header_id|>\n\n{{content}}<|eot_id|>",
     format_user=(
@@ -314,13 +310,12 @@ _register_template(
 
 
 _register_template(
-    name="phi",
-    format_user="<|user|>\n{{content}}<|end|>\n<|assistant|>\n",
-    format_system="<|system|>\n{{content}}<|end|>\n",
-    format_separator="\n",
+    name="pixtral",
+    format_user="[INST] {{content}} [/INST]",
+    format_assistant="{{content}}",
     format_prefix="{{bos_token}}",
-    stop_words=["<|end|>"],
-    replace_eos=True,
+    image_token="[IMG]",
+    replace_jinja_template=False,
 )
 
 
