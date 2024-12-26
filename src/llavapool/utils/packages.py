@@ -73,6 +73,9 @@ def is_rouge_available():
 def is_starlette_available():
     return _is_package_available("sse_starlette")
 
+@lru_cache
+def is_transformers_version_greater_than(content: str):
+    return _get_package_version("transformers") >= version.parse(content)
 
 @lru_cache
 def is_transformers_version_greater_than_4_43():
