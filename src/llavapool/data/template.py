@@ -311,9 +311,9 @@ _register_template(
 
 _register_template(
     name="pixtral",
+    format_prefix="<s>",
     format_user="[INST] {{content}} [/INST]",
     format_assistant="{{content}}",
-    format_prefix="{{bos_token}}",
     image_token="[IMG]",
     replace_jinja_template=False,
 )
