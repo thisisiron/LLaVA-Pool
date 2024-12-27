@@ -424,7 +424,6 @@ def load_dataset_module(
             # if eval_dataset is not None:
             #     if data_args.streaming:
             #         eval_dataset = eval_dataset.shuffle(buffer_size=data_args.buffer_size, seed=training_args.seed)
-
             #     dataset_dict["validation"] = eval_dataset
 
             dataset_dict = DatasetDict(dataset_dict)

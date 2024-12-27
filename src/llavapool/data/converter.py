@@ -370,7 +370,6 @@ class LlavaNextConverter(BaseConverter):
         num_image_tokens = 0
         messages = deepcopy(messages)
         visual_inputs = self.get_visual_inputs(images, videos)
-        import pdb; pdb.set_trace()
 
         if "image_sizes" in visual_inputs:
             image_sizes = iter(visual_inputs["image_sizes"])
