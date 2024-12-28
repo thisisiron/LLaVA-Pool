@@ -23,12 +23,12 @@ from ..data import get_template_and_fix_tokenizer
 from ..utils.constants import V_HEAD_SAFE_WEIGHTS_NAME, V_HEAD_WEIGHTS_NAME
 from ..utils.logging import get_logger
 from ..hparams import get_infer_args, get_train_args
-from ..model import load_model, load_tokenizer
+from ..model import load_model, load_tokenizer_and_processor
 from .callbacks import LogCallback
 # from .dpo import run_dpo
 # from .kto import run_kto
 # from .ppo import run_ppo
-# from .pt import run_pt
+from .pret import run_pret
 # from .rm import run_rm
 from .sft import run_sft
 
@@ -46,8 +46,8 @@ def run_exp(args: Optional[Dict[str, Any]] = None, callbacks: List["TrainerCallb
 
     if finetuning_args.stage == "sft":
         run_sft(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
-    # elif finetuning_args.stage == "pt":
-    #     run_pt(model_args, data_args, training_args, finetuning_args, callbacks)
+    elif finetuning_args.stage == "pret":
+        run_pret(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
     # elif finetuning_args.stage == "rm":
     #     run_rm(model_args, data_args, training_args, finetuning_args, callbacks)
     # elif finetuning_args.stage == "ppo":
@@ -69,7 +69,7 @@ def export_model(args: Optional[Dict[str, Any]] = None) -> None:
     if model_args.adapter_name_or_path is not None and model_args.export_quantization_bit is not None:
         raise ValueError("Please merge adapters before quantizing the model.")
 
-    tokenizer_module = load_tokenizer(model_args)
+    tokenizer_module = load_tokenizer_and_processor(model_args)
     tokenizer = tokenizer_module["tokenizer"]
     processor = tokenizer_module["processor"]
     get_template_and_fix_tokenizer(tokenizer, data_args)
