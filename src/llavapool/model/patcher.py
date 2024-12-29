@@ -97,7 +97,7 @@ def patch_config(
     configure_moe(config, model_args, is_trainable)
     configure_visual_model(config)
     configure_packing(model_args, is_trainable)
-
+    
     if model_args.use_cache and not is_trainable:
         setattr(config, "use_cache", True)
         logger.info("Using KV cache for faster generation.")
@@ -110,7 +110,8 @@ def patch_config(
     if getattr(config, "model_type", None) == "qwen2" and is_trainable and model_args.flash_attn == "fa2":
         setattr(config, "use_cache", False)  # qwen2 does not support use_cache when using flash attn
 
-    if "LlavaLlamaForCausalLM" in getattr(config, "architectures", []):
+    architectures = getattr(config, "architectures", []) or []
+    if "LlavaLlamaForCausalLM" in architectures:
         raise ValueError("Please download llava models with hf-compatible format: https://huggingface.co/llava-hf")
 
     # deepspeed zero3 is not compatible with low_cpu_mem_usage
@@ -128,6 +129,11 @@ def patch_config(
 
             if init_kwargs.get("device_map", None) == "auto":
                 init_kwargs["offload_folder"] = model_args.offload_folder
+    print(is_deepspeed_zero3_enabled())
+    print(is_fsdp_enabled())
+    print(model_args.compute_dtype)
+    print(init_kwargs)
+    print(config)
 
 
 def patch_model(
@@ -163,7 +169,7 @@ def patch_model(
         print_attn_implementation(model.config)
 
     try:
-        model.add_model_tags(["llama-factory"])
+        model.add_model_tags(["llavapool"])
     except Exception:
         logger.warning("Cannot properly tag the model.")
 

@@ -136,7 +136,7 @@ def get_forbidden_modules(config: "PretrainedConfig", finetuning_args: "Finetuni
         if finetuning_args.train_mm_proj_only:
             forbidden_modules.add("language_model")
     
-    elif model_type == "mllama":
+    elif model_type in ["mllama", "honeybee"]:
         if finetuning_args.freeze_vision_tower:
             forbidden_modules.add("vision_model")
 
@@ -192,7 +192,9 @@ def patch_target_modules(
     r"""
     Freezes vision tower for VLM LoRA tuning.
     """
+    
     model_type = getattr(config, "model_type", None)
+    vit_model_type = getattr(getattr(config, "vision_config", None), "model_type", None)
     if finetuning_args.freeze_vision_tower:
         if model_type in ["llava", "llava_next", "llava_next_video", "paligemma", "video_llava"]:
             return "^(?!.*vision_tower).*(?:{}).*".format("|".join(target_modules))
@@ -205,5 +207,7 @@ def patch_target_modules(
     else:
         if model_type == "qwen2_vl":
             return "^(?!.*patch_embed).*(?:{}).*".format("|".join(target_modules))
+        elif vit_model_type == "pixtral":
+            return "^(?!.*patch_conv).*(?:{}).*".format("|".join(target_modules))
         else:
             return target_modules

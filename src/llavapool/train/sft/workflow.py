@@ -21,7 +21,7 @@ from ...data import SFTDataCollatorWith4DAttentionMask, load_dataset_module, get
 from ...utils.constants import IGNORE_INDEX
 from ...utils.misc import get_logits_processor
 from ...utils.ploting import plot_loss
-from ...model import load_model, load_tokenizer
+from ...model import load_model, load_tokenizer_and_processor
 from ..trainer_utils import create_modelcard_and_push
 from .metric import ComputeAccuracy, ComputeSimilarity, eval_logit_processor
 from .trainer import CustomSeq2SeqTrainer
@@ -41,7 +41,7 @@ def run_sft(
     generating_args: "GeneratingArguments",
     callbacks: Optional[List["TrainerCallback"]] = None,
 ):
-    tokenizer_module = load_tokenizer(model_args)
+    tokenizer_module = load_tokenizer_and_processor(model_args)  # processor exists or not
     tokenizer = tokenizer_module["tokenizer"]
     processor = tokenizer_module["processor"]
     converter = load_converter(processor, data_args)
@@ -55,7 +55,7 @@ def run_sft(
         stage='sft'
     )
     
-    model = load_model(tokenizer, model_args, finetuning_args, training_args.do_train)
+    model = load_model(tokenizer, model_args, finetuning_args, training_args.do_train, stage='sft')
 
     if getattr(model, "is_quantized", False) and not training_args.do_train:
         setattr(model, "_hf_peft_config_loaded", True)  # hack here: make model compatible with prediction
