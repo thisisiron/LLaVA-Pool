@@ -425,6 +425,7 @@ def train():
         "model": model,
         "args": training_args,
         "data_collator": data_collator,
+        "processor": processor,
         **data_module
     }
 
