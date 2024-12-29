@@ -191,7 +191,20 @@ class BaseConverter:
         return visual_inputs
 
     def process_media_tokens(self, messages, images, videos):
-        raise NotImplementedError("This method must be implemented in the subclass")
+        # raise NotImplementedError("This method must be implemented in the subclass")
+        self._check_input(images, videos)
+        num_image_tokens = 0
+        messages = deepcopy(messages)
+        for message in messages:
+            content = message["content"]
+            num_image_tokens += content.count(IMAGE_PLACEHOLDER)
+            message["content"] = content.replace(IMAGE_PLACEHOLDER, self.image_token)
+
+        if len(images) != num_image_tokens:
+            raise ValueError(f"The number of images does not match the number of {IMAGE_PLACEHOLDER} tokens.")
+
+        return messages
+        
 
     def encode_multi_turn(
         self,
@@ -513,7 +526,7 @@ class PixtralConverter(BaseConverter):
 
 
 CONVERTERS = {
-    "base": BaseConverter,
+    "default": BaseConverter,
     "qwen2_vl": Qwen2vlConverter,
     "llava_next": LlavaNextConverter,
     "llama3.2_vision": MllamaConverter,

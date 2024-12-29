@@ -119,7 +119,7 @@ class ExportArguments:
 
 
 @dataclass
-class VllmArguments:
+class VllmEngineArguments:
     r"""
     Arguments pertaining to the vLLM worker.
     """
@@ -143,7 +143,27 @@ class VllmArguments:
 
 
 @dataclass
-class ModelArguments(QuantizationArguments, ProcessorArguments, ExportArguments, VllmArguments):
+class VllmArguments:
+    yaml_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to the model config file."},
+    )
+    vision_name_or_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to the vision weight or identifier from huggingface.co/models or modelscope.cn/models."},
+    )
+    vision_encoder_type: Optional[str] = field(
+        default=None,
+        metadata={"help": "Type of vision encoder to use."},
+    )
+    llm_name_or_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to the language model weight or identifier from huggingface.co/models or modelscope.cn/models."},
+    )
+
+
+@dataclass
+class ModelArguments(QuantizationArguments, ProcessorArguments, ExportArguments, VllmEngineArguments, VllmArguments):
     r"""
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune or infer.
     """
@@ -297,8 +317,8 @@ class ModelArguments(QuantizationArguments, ProcessorArguments, ExportArguments,
     )
 
     def __post_init__(self):
-        if self.model_name_or_path is None:
-            raise ValueError("Please provide `model_name_or_path`.")
+        # if self.model_name_or_path is None:
+        #     raise ValueError("Please provide `model_name_or_path`.")
 
         if self.split_special_tokens and self.use_fast_tokenizer:
             raise ValueError("`split_special_tokens` is only supported for slow tokenizers.")

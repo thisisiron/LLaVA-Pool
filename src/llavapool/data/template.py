@@ -279,7 +279,9 @@ _register_template(
     name="default",
     format_system="{{content}}\n",
     format_user="Human: {{content}}\nAssistant:",
+    format_assistant="{{content}}",
     format_separator="\n",
+    image_token="<image>",
 )
 
 
