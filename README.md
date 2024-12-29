@@ -1,12 +1,17 @@
-## Llava Pool
-
+# Llava Pool
+<p align="center">
+    <img src="assets/llavapool.png" width=128>
+</p>
 
 ## Install
 
-pip install flash-attn --no-build-isolation
+`pip install flash-attn --no-build-isolation`
 
 
-##  SFT model list
+## Pre-training model
+
+
+## SFT model list
 
 | Model | Converter |
 | --- | --- |
@@ -15,7 +20,7 @@ pip install flash-attn --no-build-isolation
 | Pixtral | pixtral |
 
 
-### References
+## References
 This repository was built based on LLaMA-Factory.
 
 - LLaMA-Factory
