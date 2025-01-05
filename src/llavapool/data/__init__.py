@@ -8,4 +8,4 @@ from .collator import (
 from .data_loader import Role, split_dataset, load_dataset_module
 from .converter import load_converter
 
-from .template import TEMPLATES, Template, get_template_and_fix_tokenizer
+from .conversation import CONVERSATIONS, Conversation, get_conversation_and_fix_tokenizer

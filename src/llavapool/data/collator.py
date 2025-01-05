@@ -27,8 +27,8 @@ from ..utils.constants import IGNORE_INDEX, IMAGE_PLACEHOLDER
 
 if TYPE_CHECKING:
     from transformers import ProcessorMixin
-
-    from .template import Template
+    from .converter import Converter
+    from .conversation import Conversation
 
 
 def prepare_4d_attention_mask(attention_mask_with_indices: "torch.Tensor", dtype: "torch.dtype") -> "torch.Tensor":

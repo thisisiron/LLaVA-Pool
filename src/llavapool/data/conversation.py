@@ -219,7 +219,7 @@ def _get_jinja_template(conversation: "Conversation", tokenizer: "PreTrainedToke
     return jinja_template
 
 
-def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: "DataArguments") -> "Conversation":
+def get_conversation_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: "DataArguments") -> "Conversation":
     r"""
     Gets chat template and fixes the tokenizer.
     """
