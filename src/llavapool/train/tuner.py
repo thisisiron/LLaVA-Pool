@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import torch
 from transformers import PreTrainedModel
 
-from ..data import get_template_and_fix_tokenizer
+from ..data import get_conversation_and_fix_tokenizer
 from ..utils.constants import V_HEAD_SAFE_WEIGHTS_NAME, V_HEAD_WEIGHTS_NAME
 from ..utils.logging import get_logger
 from ..hparams import get_infer_args, get_train_args
@@ -72,7 +72,7 @@ def export_model(args: Optional[Dict[str, Any]] = None) -> None:
     tokenizer_module = load_tokenizer_and_processor(model_args)
     tokenizer = tokenizer_module["tokenizer"]
     processor = tokenizer_module["processor"]
-    get_template_and_fix_tokenizer(tokenizer, data_args)
+    get_conversation_and_fix_tokenizer(tokenizer, data_args)
     model = load_model(tokenizer, model_args, finetuning_args)  # must after fixing tokenizer to resize vocab
 
     if getattr(model, "quantization_method", None) is not None and model_args.adapter_name_or_path is not None:

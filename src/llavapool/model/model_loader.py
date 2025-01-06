@@ -7,7 +7,7 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForVision2Seq, AutoProcessor, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead
 
-from ..models import (
+from ..pool import (
     PROCESSOR_MAPPING_NAMES, 
     CONFIG_MAPPING_NAMES, 
     MODEL_MAPPING_NAMES
@@ -146,19 +146,19 @@ def load_tokenizer(model_args: "ModelArguments") -> "PreTrainedTokenizer":
 
 def processor_class_from_name(model_name: str):
     class_name = PROCESSOR_MAPPING_NAMES[model_name]
-    module = importlib.import_module(f"..models.{model_name}", __package__)
+    module = importlib.import_module(f"..pool.{model_name}", __package__)
     return getattr(module, class_name)
 
 
 def config_class_from_name(model_name: str):
     class_name = CONFIG_MAPPING_NAMES[model_name]
-    module = importlib.import_module(f"..models.{model_name}", __package__)
+    module = importlib.import_module(f"..pool.{model_name}", __package__)
     return getattr(module, class_name)
 
 
 def model_class_from_name(model_name: str):
     class_name = MODEL_MAPPING_NAMES[model_name]
-    module = importlib.import_module(f"..models.{model_name}", __package__)
+    module = importlib.import_module(f"..pool.{model_name}", __package__)
     return getattr(module, class_name)
 
 def load_processor(model_args: "ModelArguments", tokenizer: "PreTrainedTokenizer") -> "ProcessorMixin":

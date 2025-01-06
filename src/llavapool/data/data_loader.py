@@ -200,7 +200,7 @@ def _encode_supervised_example(
         system=system,
         tools=tools,
     )
-    total_length = 1 if converter.template.efficient_eos else 0
+    total_length = 1 if converter.conversation.efficient_eos else 0
 
     if mask_history:
         encoded_pairs = encoded_pairs[::-1]
@@ -220,7 +220,7 @@ def _encode_supervised_example(
 
         if train_on_prompt:
             source_label = source_ids
-        elif converter.template.efficient_eos:
+        elif converter.conversation.efficient_eos:
             source_label = [tokenizer.eos_token_id] + [IGNORE_INDEX] * (source_len - 1)
         else:
             source_label = [IGNORE_INDEX] * source_len
@@ -237,7 +237,7 @@ def _encode_supervised_example(
             input_ids += source_ids + target_ids
             labels += source_label + target_label
     
-    if converter.template.efficient_eos:
+    if converter.conversation.efficient_eos:
         input_ids += [tokenizer.eos_token_id]
         labels += [tokenizer.eos_token_id]
     
