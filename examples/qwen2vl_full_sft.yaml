@@ -1,0 +1,34 @@
+### model
+model_name_or_path: "output/qwen2_vl-7b/full/sft_woflickr/checkpoint-130000"
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+freeze_vision_tower: true
+train_mm_proj_only: false
+deepspeed: scripts/deepspeed/zero3.json
+
+### dataset
+dataset: aihub_table
+conversation: qwen2_vl
+cutoff_len: 2048
+max_samples: 1000
+overwrite_cache: true
+preprocessing_num_workers: 80
+
+### output
+output_dir: output/qwen2_vl-7b/full/aihub_table
+logging_steps: 10
+save_steps: 5000
+# overwrite_output_dir: true
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 2
+learning_rate: 1.0e-5
+num_train_epochs: 1
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
