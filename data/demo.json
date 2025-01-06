@@ -1,0 +1,117 @@
+[
+  {
+    "messages": [
+      {
+        "content": "<image>이미지에 대해 설명해줘.",
+        "role": "user"
+      },
+      {
+        "content": "큰 빨간 공중 전화 박스 안에 한 남자가 서 있습니다.",
+        "role": "assistant"
+      },
+      {
+        "content": "남자는 무엇을 하고 있어?",
+        "role": "user"
+      },
+      {
+        "content": "전화를 사용하고 있습니다.",
+        "role": "assistant"
+      }
+    ],
+    "images": [
+      "demo_data/COCO_train2014_000000222016.jpg"
+    ]
+  },
+  {
+    "messages": [
+      {
+        "content": "<image>이 사람은 누구인가요?",
+        "role": "user"
+      },
+      {
+        "content": "이미지만으로는 정확히 알 수 없지만, 요리를 준비 중인 사람으로 보입니다.",
+        "role": "assistant"
+      },
+      {
+        "content": "그는 무엇을 하고 있나요?",
+        "role": "user"
+      },
+      {
+        "content": "그는 부엌 도구를 사용하여 파 같은 재료를 손질하며 요리를 준비하고 있는 것 같습니다.",
+        "role": "assistant"
+      }
+    ],
+    "images": [
+      "demo_data/COCO_train2014_000000283524.jpg"
+    ]
+  },
+  {
+    "messages": [
+      {
+        "content": "<image>이들은 무엇을 하고 있나요?",
+        "role": "user"
+      },
+      {
+        "content": "두 명의 학생이 작은 노트북을 보며 함께 공부하거나 무언가를 탐구하고 있는 것 같습니다.",
+        "role": "assistant"
+      },
+      {
+        "content": "왜 이렇게 웃고 있나요?",
+        "role": "user"
+      },
+      {
+        "content": "노트북에서 재미있는 내용을 발견했거나, 함께 문제를 풀면서 즐거움을 느끼고 있는 것 같아요.",
+        "role": "assistant"
+      }
+    ],
+    "images": [
+      "demo_data/COCO_train2014_000000356702.jpg"
+    ]
+  },
+  {
+    "messages": [
+      {
+        "content": "<image>Describe the image.",
+        "role": "user"
+      },
+      {
+        "content": "A man is standing inside a large red telephone booth.",
+        "role": "assistant"
+      },
+      {
+        "content": "What is the man doing?",
+        "role": "user"
+      },
+      {
+        "content": "He is using the telephone.",
+        "role": "assistant"
+      }
+    ],
+    "images": [
+      "demo_data/COCO_train2014_000000222016.jpg"
+    ]
+  },  
+  {
+    "messages": [
+      {
+        "content": "<image>What are they doing?",
+        "role": "user"
+      },
+      {
+        "content": "Two students seem to be looking at a small laptop, possibly studying or exploring something together.",
+        "role": "assistant"
+      },
+      {
+        "content": "Why are they laughing?",
+        "role": "user"
+      },
+      {
+        "content": "They might have found something amusing on the laptop or are enjoying solving a problem together.",
+        "role": "assistant"
+      }
+    ],
+    "images": [
+      "demo_data/COCO_train2014_000000356702.jpg"
+    ]
+  }
+]
