@@ -17,7 +17,7 @@
 
 from typing import TYPE_CHECKING, List, Optional
 
-from ...data import SFTDataCollatorWith4DAttentionMask, load_dataset_module, get_conversation_and_fix_tokenizer, load_converter
+from ...data import SFTDataCollatorWith4DAttentionMask, load_dataset_module, load_converter
 from ...utils.constants import IGNORE_INDEX
 from ...utils.misc import get_logits_processor
 from ...utils.ploting import plot_loss

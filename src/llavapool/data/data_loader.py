@@ -191,7 +191,6 @@ def _encode_supervised_example(
     mask_history: bool = False,
     data_args: "DataArguments" = None,
 ):
-
     input_ids, labels = [], []
     encoded_pairs = converter.encode_multi_turn(
         prompt + response, 

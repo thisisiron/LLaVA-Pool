@@ -33,7 +33,7 @@ class EvaluationArguments:
         metadata={"help": "Path to the folder containing the evaluation datasets."},
     )
     batch_size: int = field(
-        default=4,
+        default=1,
         metadata={"help": "The batch size per GPU for evaluation."},
     )
     seed: int = field(
@@ -44,7 +44,7 @@ class EvaluationArguments:
         default="en",
         metadata={"help": "Language used at evaluation."},
     )
-    n_shot: int = field(
+    few_shot: int = field(
         default=5,
         metadata={"help": "Number of examplars for few-shot learning."},
     )
@@ -55,6 +55,10 @@ class EvaluationArguments:
     download_mode: DownloadMode = field(
         default=DownloadMode.REUSE_DATASET_IF_EXISTS,
         metadata={"help": "Download mode used for the evaluation datasets."},
+    )
+    num_workers: int = field(
+        default=4,
+        metadata={"help": "Number of workers used in the data loaders."},
     )
 
     def __post_init__(self):

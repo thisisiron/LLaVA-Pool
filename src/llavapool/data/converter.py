@@ -93,9 +93,9 @@ class BaseConverter:
         self.video_token = conversation.video_token
 
     def _check_input(self, images, videos):
-        if len(images) >= 1 and self.image_token is None:
+        if images is not None and len(images) >= 1 and self.image_token is None:
             raise ValueError("Image token is required for images")
-        if len(videos) >= 1 and self.video_token is None:
+        if videos is not None and len(videos) >= 1 and self.video_token is None:
             raise ValueError("Video token is required for videos")
 
     def convert(self):
@@ -106,7 +106,7 @@ class BaseConverter:
 
     def _preprocess_image(self, image, **kwargs):
         image = image.convert("RGB")
-        image = basic_resize(image, image_resolution=kwargs.get("image_resolution", 512))
+        image = basic_resize(image, image_resolution=kwargs.get("image_resolution", 640))
         return image
 
     def _get_images(self, images, **kwargs):
@@ -173,7 +173,7 @@ class BaseConverter:
         if len(images) != 0:
             input_dict["images"] = self._get_images(
                 images, 
-                image_resolution=getattr(self.processor.image_resolution, "image_resolution", 512),
+                image_resolution=getattr(self.processor.image_resolution, "image_resolution", 640),
                 **kwargs
             )
         
@@ -204,7 +204,6 @@ class BaseConverter:
             raise ValueError(f"The number of images does not match the number of {IMAGE_PLACEHOLDER} tokens.")
 
         return messages
-        
 
     def encode_multi_turn(
         self,
@@ -296,7 +295,27 @@ class BaseConverter:
 
             encoded_messages.append(self.tokenizer.encode(current_message, add_special_tokens=False))
         return encoded_messages
-    
+
+    def encode_single_turn(
+        self,
+        messages: Sequence[Dict[str, str]],
+        images: Sequence[str],
+        videos: Sequence[str],
+        system: Optional[str] = None,
+        tools: Optional[str] = None,
+    ):
+        r"""
+        Returns a pair of token ids representing prompt and answer respectively.
+        """
+        messages = self.process_media_tokens(messages, images, videos)
+        encoded_messages = self._encode(messages, system, tools)
+        prompt_ids = []
+        for encoded_message in encoded_messages[:-1]:
+            prompt_ids += encoded_message
+        
+        answer_ids = encoded_messages[-1]
+        return prompt_ids, answer_ids
+
 
 class Qwen2vlConverter(BaseConverter):
     @override
