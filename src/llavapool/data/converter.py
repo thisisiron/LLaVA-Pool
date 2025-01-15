@@ -15,7 +15,7 @@ from transformers.models.mllama.processing_mllama import (
 )
 
 from ..utils.constants import IMAGE_PLACEHOLDER, VIDEO_PLACEHOLDER
-from .conversation import get_conversation_and_fix_tokenizer
+from .template import get_template_and_fix_tokenizer
 from .data_loader import Role
 
 
@@ -83,14 +83,14 @@ def smart_resize(
         
 
 class BaseConverter:
-    def __init__(self, conversation, processor):
-        self.conversation = conversation
+    def __init__(self, template, processor):
+        self.template = template
         self.processor = processor
         self.tokenizer = processor.tokenizer
         self.expand_mm_tokens = True
 
-        self.image_token = conversation.image_token
-        self.video_token = conversation.video_token
+        self.image_token = template.image_token
+        self.video_token = template.video_token
 
     def _check_input(self, images, videos):
         if images is not None and len(images) >= 1 and self.image_token is None:
@@ -226,8 +226,8 @@ class BaseConverter:
         """
         return self.format_tools.extract(content)
 
-    def _replace_tokens(self, conversation: str, **kwargs) -> str:
-        result = conversation
+    def _replace_tokens(self, template: str, **kwargs) -> str:
+        result = template
         
         for key, value in kwargs.items():
             result = result.replace("{{" + key + "}}", str(value))
@@ -253,41 +253,41 @@ class BaseConverter:
         Turn 0: prefix + system + query        resp
         Turn t: sep + query                    resp
         """
-        system = system or self.conversation.default_system
+        system = system or self.template.default_system
         encoded_messages = []
 
         for i, message in enumerate(messages):
             current_message = ""
             
             if i == 0:
-                current_message += self.conversation.format_prefix
+                current_message += self.template.format_prefix
                 if system or tools:
-                    tool_text = self._replace_tokens(self.conversation.format_tools, content=tools) if tools else ""
-                    if self.conversation.system_style == "standard":
-                        current_message += self._replace_tokens(self.conversation.format_system, content=(system + tool_text))
+                    tool_text = self._replace_tokens(self.template.format_tools, content=tools) if tools else ""
+                    if self.template.system_style == "standard":
+                        current_message += self._replace_tokens(self.template.format_system, content=(system + tool_text))
 
             if i > 0 and i % 2 == 0:
-                current_message += self.conversation.format_separator
+                current_message += self.template.format_separator
 
             if message["role"] == Role.USER:
                 current_message += self._replace_tokens(
-                    self.conversation.format_user,
-                    content=message["content"] if self.conversation.system_style == "standard" else system + message["content"],
+                    self.template.format_user,
+                    content=message["content"] if self.template.system_style == "standard" else system + message["content"],
                     idx=str(i // 2)
                 )
             elif message["role"] == Role.ASSISTANT:
                 current_message += self._replace_tokens(
-                    self.conversation.format_assistant,
+                    self.template.format_assistant,
                     content=message["content"]
                 )
             elif message["role"] == Role.OBSERVATION:
                 current_message += self._replace_tokens(
-                    self.conversation.format_observation,
+                    self.template.format_observation,
                     content=message["content"]
                 )
             elif message["role"] == Role.FUNCTION:
                 current_message += self._replace_tokens(
-                    self.conversation.format_function,
+                    self.template.format_function,
                     content=message["content"]
                 )
             else:
@@ -387,7 +387,6 @@ class Qwen2vlConverter(BaseConverter):
         if len(videos) != num_video_tokens:
             raise ValueError(f"Number of {VIDEO_PLACEHOLDER} tokens does not match the number of videos.")
         return messages
-
 
 
 class LlavaNextConverter(BaseConverter):
@@ -555,18 +554,18 @@ CONVERTERS = {
 
 def get_mm_converter(
     name: str,
-    conversation,
+    template,
     processor,
 ):
     converter_class = CONVERTERS.get(name, None)
     if converter_class is None:
         raise ValueError(f"Invalid converter name: {name}")
 
-    return converter_class(conversation, processor)
+    return converter_class(template, processor)
 
 
 def load_converter(processor, data_args):
-    conversation = get_conversation_and_fix_tokenizer(processor.tokenizer, data_args)
-    converter = get_mm_converter(data_args.conversation, conversation, processor)
+    template = get_template_and_fix_tokenizer(processor.tokenizer, data_args)
+    converter = get_mm_converter(data_args.template, template, processor)
 
     return converter

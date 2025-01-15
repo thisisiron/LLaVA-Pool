@@ -25,9 +25,9 @@ class DataArguments:
     Arguments pertaining to what data we are going to input our model for training and evaluation.
     """
 
-    conversation: Optional[str] = field(
+    template: Optional[str] = field(
         default=None,
-        metadata={"help": "Which conversation template to use for constructing prompts in training and inference."},
+        metadata={"help": "Which template template to use for constructing prompts in training and inference."},
     )
     dataset: Optional[str] = field(
         default=None,

@@ -103,7 +103,7 @@ def _verify_model_args(
         if model_args.adapter_name_or_path is not None and len(model_args.adapter_name_or_path) != 1:
             raise ValueError("Quantized model only accepts a single adapter. Merge them first.")
 
-    if data_args.conversation == "yi" and model_args.use_fast_tokenizer:
+    if data_args.template == "yi" and model_args.use_fast_tokenizer:
         logger.warning("We should use slow tokenizer for the Yi models. Change `use_fast_tokenizer` to False.")
         model_args.use_fast_tokenizer = False
 
@@ -167,8 +167,8 @@ def get_train_args(args: Optional[Dict[str, Any]] = None) -> _TRAIN_CLS:
         _set_transformers_logging()
 
     # Check arguments
-    if finetuning_args.stage != "pt" and data_args.conversation is None:
-        raise ValueError("Please specify which `conversation` to use.")
+    if finetuning_args.stage != "pt" and data_args.template is None:
+        raise ValueError("Please specify which `template` to use.")
 
     if finetuning_args.stage != "sft":
         if training_args.predict_with_generate:
@@ -370,8 +370,8 @@ def get_infer_args(args: Optional[Dict[str, Any]] = None) -> _INFER_CLS:
 
     _set_transformers_logging()
 
-    if data_args.conversation is None:
-        raise ValueError("Please specify which `conversation` to use.")
+    if data_args.template is None:
+        raise ValueError("Please specify which `template` to use.")
 
     if model_args.infer_backend == "vllm":
         if finetuning_args.stage != "sft":
@@ -403,8 +403,8 @@ def get_eval_args(args: Optional[Dict[str, Any]] = None) -> _EVAL_CLS:
 
     _set_transformers_logging()
 
-    if data_args.conversation is None:
-        raise ValueError("Please specify which `conversation` to use.")
+    if data_args.template is None:
+        raise ValueError("Please specify which `template` to use.")
 
     if model_args.infer_backend == "vllm":
         raise ValueError("vLLM backend is only available for API, CLI and Web.")

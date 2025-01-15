@@ -26,7 +26,7 @@ logger = logging.get_logger(__name__)
 
 
 @dataclass
-class Conversation:
+class Template:
     format_user: str
     format_assistant: str
     format_system: str
@@ -45,10 +45,10 @@ class Conversation:
     video_token: str
 
 
-CONVERSATIONS: Dict[str, "Conversation"] = {}
+TEMPLATE: Dict[str, "Template"] = {}
 
 
-def _register_conversation(
+def _register_template(
     name: str,
     format_user: Optional[str] = None,
     format_assistant: Optional[str] = None,
@@ -84,7 +84,7 @@ def _register_conversation(
 
     The corresponding code should be:
     ```
-    _register_conversation(
+    _register_template(
         name="custom",
         format_user=StringFormatter(slots=["[HUMAN]:\n{{content}}\n[AI]:\n"]),
         format_separator=EmptyFormatter(slots=["\n\n"]),
@@ -97,7 +97,7 @@ def _register_conversation(
     default_separator_formatter = ""
     default_prefix_formatter = ""
     default_system_style = "standard"
-    CONVERSATIONS[name] = Conversation(
+    TEMPLATE[name] = Template(
         format_prefix=format_prefix or default_prefix_formatter,
         format_system=format_system,
         default_system=default_system,
@@ -172,16 +172,16 @@ def _convert_str_to_jinja(template: str, tokenizer: "PreTrainedTokenizer", place
     return " + ".join(slot_items)
 
 
-def _get_jinja_template(conversation: "Conversation", tokenizer: "PreTrainedTokenizer") -> str:
+def _get_jinja_template(template: "Template", tokenizer: "PreTrainedTokenizer") -> str:
     jinja_template = ""
 
-    if conversation.format_prefix:
-        prefix = _convert_str_to_jinja(conversation.format_prefix, tokenizer)
+    if template.format_prefix:
+        prefix = _convert_str_to_jinja(template.format_prefix, tokenizer)
         if prefix:
             jinja_template += "{{ " + prefix + " }}"
 
-    if conversation.default_system:
-        jinja_template += "{% set system_message = '" + _jinja_escape(conversation.default_system) + "' %}"
+    if template.default_system:
+        jinja_template += "{% set system_message = '" + _jinja_escape(template.default_system) + "' %}"
 
     jinja_template += (
         "{% if messages[0]['role'] == 'system' %}{% set loop_messages = messages[1:] %}"
@@ -189,7 +189,7 @@ def _get_jinja_template(conversation: "Conversation", tokenizer: "PreTrainedToke
     )
 
     # system message 처리 수정
-    system_message = _convert_str_to_jinja(conversation.format_system, tokenizer, placeholder="system_message")
+    system_message = _convert_str_to_jinja(template.format_system, tokenizer, placeholder="system_message")
     # if not isinstance(template, Llama2Template):
     #     jinja_template += "{% if system_message is defined %}{{ " + system_message + " }}{% endif %}"
 
@@ -205,12 +205,12 @@ def _get_jinja_template(conversation: "Conversation", tokenizer: "PreTrainedToke
 
     # 사용자/어시스턴트 메시지 처리
     jinja_template += "{% if message['role'] == 'user' %}"
-    user_message = _convert_str_to_jinja(conversation.format_user, tokenizer)
+    user_message = _convert_str_to_jinja(template.format_user, tokenizer)
     jinja_template += "{{ " + user_message + " }}"
 
     jinja_template += "{% elif message['role'] == 'assistant' %}"
     # separator를 문자열 연결로 처리
-    assistant_template = conversation.format_assistant + conversation.format_separator
+    assistant_template = template.format_assistant + template.format_separator
     assistant_message = _convert_str_to_jinja(assistant_template, tokenizer)
     jinja_template += "{{ " + assistant_message + " }}"
     
@@ -219,23 +219,23 @@ def _get_jinja_template(conversation: "Conversation", tokenizer: "PreTrainedToke
     return jinja_template
 
 
-def get_conversation_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: "DataArguments") -> "Conversation":
+def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: "DataArguments") -> "Template":
     r"""
     Gets chat template and fixes the tokenizer.
     """
-    if data_args.conversation in ["llama", "phiv3", "qwen2_vl"]:
+    if data_args.template in ["llama", "phiv3", "qwen2_vl"]:
         require_version("transformers>=4.45.0", "To fix: pip install transformers>=4.45.0")
         require_version("accelerate>=0.34.0", "To fix: pip install accelerate>=0.34.0")
 
-    if data_args.conversation is None:
-        conversation = CONVERSATIONS["empty"]  # placeholder
+    if data_args.template is None:
+        template = TEMPLATE["empty"]  # placeholder
     else:
-        conversation = CONVERSATIONS.get(data_args.conversation, None)
-        if conversation is None:
-            raise ValueError("Conversation {} does not exist.".format(data_args.conversation))
+        template = TEMPLATE.get(data_args.template, None)
+        if template is None:
+            raise ValueError("Template {} does not exist.".format(data_args.template))
 
-    if data_args.train_on_prompt and conversation.efficient_eos:
-        raise ValueError("Current conversation template does not support `train_on_prompt`.")
+    if data_args.train_on_prompt and template.efficient_eos:
+        raise ValueError("Current template template does not support `train_on_prompt`.")
 
     # if data_args.tool_format is not None:
     #     logger.info("Using tool format: {}.".format(data_args.tool_format))
@@ -243,8 +243,8 @@ def get_conversation_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_ar
     #     template.format_function = FunctionFormatter(slots=eos_slots, tool_format=data_args.tool_format)
     #     template.format_tools = ToolFormatter(tool_format=data_args.tool_format)
 
-    stop_words = conversation.stop_words
-    if conversation.replace_eos:
+    stop_words = template.stop_words
+    if template.replace_eos:
         if not stop_words:
             raise ValueError("Stop words are required to replace the EOS token.")
 
@@ -266,16 +266,16 @@ def get_conversation_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_ar
         if num_added_tokens > 0:
             logger.warning("New tokens have been added, make sure `resize_vocab` is True.")
 
-    if conversation.replace_jinja_template:
+    if template.replace_jinja_template:
         try:
-            tokenizer.chat_template = _get_jinja_template(conversation, tokenizer)
+            tokenizer.chat_template = _get_jinja_template(template, tokenizer)
         except ValueError:
             logger.info("Cannot add this chat template to tokenizer.")
 
-    return conversation
+    return template
 
 
-_register_conversation(
+_register_template(
     name="default",
     format_system="{{content}}\n",
     format_user="Human: {{content}}\nAssistant:",
@@ -285,13 +285,13 @@ _register_conversation(
 )
 
 
-_register_conversation(
+_register_template(
     name="empty",
     efficient_eos=True,
 )
 
 
-_register_conversation(
+_register_template(
     name="llama3.2_vision",
     format_prefix="<|begin_of_text|>",
     format_system="<|start_header_id|>system<|end_header_id|>\n\n{{content}}<|eot_id|>",
@@ -311,7 +311,7 @@ _register_conversation(
 )
 
 
-_register_conversation(
+_register_template(
     name="pixtral",
     format_prefix="<s>",
     format_user="[INST] {{content}} [/INST]",
@@ -321,7 +321,7 @@ _register_conversation(
 )
 
 
-_register_conversation(
+_register_template(
     name="qwen2_vl",
     default_system="You are a helpful assistant.",
     format_system="<|im_start|>system\n{{content}}<|im_end|>\n",
