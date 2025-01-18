@@ -10,7 +10,8 @@ from trl import AutoModelForCausalLMWithValueHead
 from ..pool import (
     PROCESSOR_MAPPING_NAMES, 
     CONFIG_MAPPING_NAMES, 
-    MODEL_MAPPING_NAMES
+    MODEL_MAPPING_NAMES,
+    IMAGE_PROCESSOR_MAPPING_NAMES
 )
 from ..utils.logging import get_logger
 from ..utils.misc import (
@@ -98,6 +99,7 @@ def load_tokenizer_and_processor(model_args: "ModelArguments") -> "TokenizerModu
     try:
         processor = AutoProcessor.from_pretrained(model_args.model_name_or_path, **init_kwargs)
         patch_processor(processor, config, tokenizer, model_args)
+
     except Exception as e:
         logger.warning("Processor was not found: {}.".format(e))
         processor = None
@@ -106,6 +108,11 @@ def load_tokenizer_and_processor(model_args: "ModelArguments") -> "TokenizerModu
     # https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/auto/processing_auto.py#L324
     if processor is not None and "Processor" not in processor.__class__.__name__:
         processor = None
+
+        if config.model_type in PROCESSOR_MAPPING_NAMES:
+            image_processor = image_processor_class_from_name(config.model_type)()
+            processor = processor_class_from_name(config.model_type)(image_processor, tokenizer)
+            patch_processor(processor, config, tokenizer, model_args)
 
     return {"tokenizer": tokenizer, "processor": processor}
 
@@ -143,6 +150,11 @@ def load_tokenizer(model_args: "ModelArguments") -> "PreTrainedTokenizer":
             logger.warning("New tokens have been added, changed `resize_vocab` to True.")
     return tokenizer
 
+
+def image_processor_class_from_name(model_name: str):
+    class_name = IMAGE_PROCESSOR_MAPPING_NAMES[model_name]
+    module = importlib.import_module(f"..pool.{model_name}", __package__)
+    return getattr(module, class_name)
 
 def processor_class_from_name(model_name: str):
     class_name = PROCESSOR_MAPPING_NAMES[model_name]
@@ -302,6 +314,7 @@ def load_auto_model(
                     name, param.dtype, param.device, param.requires_grad
                 )
             )
+
     return model
 
 
