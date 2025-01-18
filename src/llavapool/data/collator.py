@@ -123,6 +123,7 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
                 feature["token_type_ids"] = token_type_ids[i]
 
         features: Dict[str, "torch.Tensor"] = super().__call__(features)
+
         if self.model is not None and hasattr(self.model, "get_rope_index"):  # for qwen2vl mrope
             features["position_ids"], features["rope_deltas"] = self.model.get_rope_index(
                 input_ids=features["input_ids"],
@@ -130,6 +131,10 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
                 video_grid_thw=visual_inputs.get("video_grid_thw", None),
                 attention_mask=features["attention_mask"],
             )
+
+        if self.model is not None and self.model.config.model_type == "internvl_chat":
+            num_patches = visual_inputs["pixel_values"].size(0)
+            features["image_flags"] = torch.tensor([1] * num_patches, dtype=torch.long)
 
         if "cross_attention_mask" in visual_inputs:  # for mllama inputs when pad_to_multiple_of is enabled
             cross_attention_mask = visual_inputs.pop("cross_attention_mask")

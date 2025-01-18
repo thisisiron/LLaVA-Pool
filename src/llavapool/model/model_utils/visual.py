@@ -115,8 +115,13 @@ def configure_visual_model(config: "PretrainedConfig") -> None:
         "mllama",
         "paligemma",
         "video_llava",
+        "internvl_chat",
     ]:  # required for ds zero3 and valuehead models
-        setattr(config, "hidden_size", getattr(config.text_config, "hidden_size", None))
+        if getattr(config, "text_config", None) is not None:
+            setattr(config, "hidden_size", config.text_config.hidden_size)
+        elif getattr(config, "llm_config", None) is not None:
+            setattr(config, "hidden_size", config.llm_config.hidden_size)
+        # setattr(config, "hidden_size", getattr(config.text_config, "hidden_size", None))
 
     if getattr(config, "is_yi_vl_derived_model", None):
         logger.info("Detected Yi-VL model, applying projector patch.")

@@ -56,37 +56,11 @@ def basic_resize(image, image_resolution: int = 512):
     return image
 
 
-def smart_resize(
-    image,
-    resized_height: int = None,
-    resized_width: int = None,
-    max_pixels: int = MAX_PIXELS,
-    min_pixels: int = MIN_PIXELS,
-    factor: int = IMAGE_FACTOR,
-):
-    height, width = image.size
-    if resized_height is not None and resized_width is not None:
-        height, width = resized_height, resized_width
-
-    adjusted_height = max(factor, round_by_factor(height, factor))
-    adjusted_width = max(factor, round_by_factor(width, factor))
-    if adjusted_height * adjusted_width > max_pixels:
-        beta = math.sqrt(max_pixels / (height * width))
-        adjusted_height = floor_by_factor(height * beta, factor)
-        adjusted_width = floor_by_factor(width * beta, factor)
-    elif adjusted_height * adjusted_width < min_pixels:
-        beta = math.sqrt(min_pixels / (height * width))
-        adjusted_height = ceil_by_factor(height * beta, factor)
-        adjusted_width = ceil_by_factor(width * beta, factor)
-    
-    return image.resize((adjusted_width, adjusted_height))
-        
-
 class BaseConverter:
-    def __init__(self, template, processor):
+    def __init__(self, template, processor, tokenizer):
         self.template = template
         self.processor = processor
-        self.tokenizer = processor.tokenizer
+        self.tokenizer = tokenizer
         self.expand_mm_tokens = True
 
         self.image_token = template.image_token
@@ -168,12 +142,14 @@ class BaseConverter:
         image_processor = self.processor.image_processor
         video_processor = getattr(self.processor, 'video_processor', None) or image_processor
 
+        image_resolution = getattr(self.processor, "image_resolution", 640)
+
         input_dict = {"images": None}
 
         if len(images) != 0:
             input_dict["images"] = self._get_images(
                 images, 
-                image_resolution=getattr(self.processor.image_resolution, "image_resolution", 640),
+                image_resolution=image_resolution,
                 **kwargs
             )
         
@@ -496,7 +472,7 @@ class PixtralConverter(BaseConverter):
 
         num_image_tokens = 0
         messages = deepcopy(messages)
-        visual_inputs = super().get_visual_inputs(images, videos, self.processor)
+        visual_inputs = super().get_visual_inputs(images, videos)
         image_input_sizes = visual_inputs.get("image_sizes", None)
         for message in messages:
             content = message["content"]
@@ -543,12 +519,60 @@ class PixtralConverter(BaseConverter):
         return visual_inputs
 
 
+class InternVLChatConverter(BaseConverter):
+
+    @override
+    def process_media_tokens(
+        self,
+        messages: Sequence[Dict[str, str]],
+        images: Sequence["ImageInput"],
+        videos: Sequence["VideoInput"],
+    ) -> List[Dict[str, str]]:
+        """Process media tokens for InternVL model.
+        
+        This converter replaces IMAGE_PLACEHOLDER with:
+        <img><IMG_CONTEXT>...<IMG_CONTEXT></img>
+        """
+
+        self._check_input(images, videos)
+        num_image_tokens = 0  # count of image tokens
+        messages = deepcopy(messages)
+
+        num_image_token = getattr(self.processor, "num_image_token")  # number of image tokens per image
+
+        # Calculate number of image tokens needed
+        visual_inputs = self.get_visual_inputs(images, videos)
+        num_patches = visual_inputs['pixel_values'].size(0)
+        
+        for message in messages:
+            content = message["content"]
+            while IMAGE_PLACEHOLDER in content:
+                if num_image_tokens >= len(images):
+                    raise ValueError(f"`len(images)` is less than the number of {IMAGE_PLACEHOLDER} tokens.")
+                
+                # Replace placeholder with image tokens
+                content = content.replace(
+                    IMAGE_PLACEHOLDER,
+                    f"<img>{self.image_token * num_patches * num_image_token}</img>",
+                    1,
+                )
+                num_image_tokens += 1
+            
+            message["content"] = content
+
+        if len(images) != num_image_tokens:
+            raise ValueError(f"Number of {IMAGE_PLACEHOLDER} tokens does not match the number of images.")
+        # print('num_image_token:', num_image_token, 'num_patches:', num_patches)
+        return messages
+
+
 CONVERTERS = {
     "default": BaseConverter,
     "qwen2_vl": Qwen2vlConverter,
     "llava_next": LlavaNextConverter,
     "llama3.2_vision": MllamaConverter,
     "pixtral": PixtralConverter,
+    "internvl2_5": InternVLChatConverter
 }
 
 
@@ -556,16 +580,17 @@ def get_mm_converter(
     name: str,
     template,
     processor,
+    tokenizer
 ):
     converter_class = CONVERTERS.get(name, None)
     if converter_class is None:
         raise ValueError(f"Invalid converter name: {name}")
 
-    return converter_class(template, processor)
+    return converter_class(template, processor, tokenizer)
 
 
-def load_converter(processor, data_args):
-    template = get_template_and_fix_tokenizer(processor.tokenizer, data_args)
-    converter = get_mm_converter(data_args.template, template, processor)
+def load_converter(processor, tokenizer, data_args):
+    template = get_template_and_fix_tokenizer(tokenizer, data_args)
+    converter = get_mm_converter(data_args.template, template, processor, tokenizer)
 
     return converter

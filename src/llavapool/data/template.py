@@ -335,3 +335,15 @@ _register_template(
     image_token="<|image_pad|>",
     video_token="<|video_pad|>",
 )
+
+_register_template(
+    name="internvl2_5",
+    default_system="You are a helpful assistant.",
+    format_system="<s><|im_start|>system\n{{content}}<|im_end|>\n",
+    format_user="<|im_start|>user\n{{content}}<|im_end|>\n<|im_start|>assistant\n",
+    format_assistant="{{content}}<|im_end|>",
+    format_separator="\n",
+    stop_words=["<|im_end|>"],
+    replace_eos=True,
+    image_token="<IMG_CONTEXT>"
+)

@@ -57,6 +57,16 @@ def patch_tokenizer(tokenizer: "PreTrainedTokenizer") -> None:
         tokenizer._pad = MethodType(PreTrainedTokenizerBase._pad, tokenizer)
 
 
+def get_downsample_ratio(config: "PretrainedConfig") -> float:
+    ratio = getattr(config, "downsample_ratio", 1.0)
+    return ratio
+
+
+def get_num_image_token(processor: "ProcessorMixin") -> int:
+    num_image_token = int((processor.image_resolution // processor.patch_size) ** 2 * (processor.downsample_ratio ** 2))
+    return num_image_token
+
+
 def patch_processor(
     processor: "ProcessorMixin",
     config: "PretrainedConfig",
@@ -71,6 +81,10 @@ def patch_processor(
     setattr(processor, "video_fps", model_args.video_fps)
     setattr(processor, "video_maxlen", model_args.video_maxlen)
     setattr(processor, "vision_feature_select_strategy", get_vision_feature_select_strategy(config))
+    
+    if config.model_type == "internvl_chat":
+        setattr(processor, "downsample_ratio", get_downsample_ratio(config))
+        setattr(processor, "num_image_token", get_num_image_token(processor))
 
 
 def patch_config(
@@ -167,6 +181,9 @@ def patch_model(
 
     if not model_args.use_unsloth:
         print_attn_implementation(model.config)
+        
+    if model.config.model_type == "internvl_chat":
+        model.img_context_token_id = tokenizer.convert_tokens_to_ids("<IMG_CONTEXT>")
 
     try:
         model.add_model_tags(["llavapool"])
