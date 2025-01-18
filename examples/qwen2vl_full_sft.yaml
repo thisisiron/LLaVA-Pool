@@ -1,5 +1,5 @@
 ### model
-model_name_or_path: "output/qwen2_vl-7b/full/sft_woflickr/checkpoint-130000"
+model_name_or_path: "../../weights/sft_woflickr/checkpoint-130000"
 
 ### method
 stage: sft
@@ -10,18 +10,17 @@ train_mm_proj_only: false
 deepspeed: scripts/deepspeed/zero3.json
 
 ### dataset
-dataset: aihub_table
-conversation: qwen2_vl
-cutoff_len: 2048
-max_samples: 1000
+dataset: aihub_table,aihub_chart,aihub_math,aihub_ocr,docvqa,arxivqa,ocr-vqa-200k
+template: qwen2_vl
+cutoff_len: 4096
 overwrite_cache: true
 preprocessing_num_workers: 80
 
 ### output
-output_dir: output/qwen2_vl-7b/full/aihub_table
-logging_steps: 10
-save_steps: 5000
-# overwrite_output_dir: true
+output_dir: output/qwen2_vl-7b/full/ko-en_docai_4096
+logging_steps: 100
+save_steps: 20000
+overwrite_output_dir: false
 
 ### train
 per_device_train_batch_size: 1
