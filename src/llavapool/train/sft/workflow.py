@@ -44,7 +44,7 @@ def run_sft(
     tokenizer_module = load_tokenizer_and_processor(model_args)  # processor exists or not
     tokenizer = tokenizer_module["tokenizer"]
     processor = tokenizer_module["processor"]
-    converter = load_converter(processor, data_args)
+    converter = load_converter(processor, tokenizer, data_args)
     dataset_module = load_dataset_module(
         converter=converter,
         data_args=data_args,
@@ -67,6 +67,7 @@ def run_sft(
         block_diag_attn=model_args.block_diag_attn,
         attn_implementation=getattr(model.config, "_attn_implementation", None),
         compute_dtype=model_args.compute_dtype,
+        model=model,
         **tokenizer_module,
     )
 
