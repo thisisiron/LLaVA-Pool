@@ -1,11 +1,6 @@
 from typing import Dict, List, Optional, Tuple, Union, Any
 import numpy as np
 from PIL import Image
-try:
-    from PIL import ImageResampling
-    PILImageResampling = ImageResampling
-except ImportError:
-    from PIL import Image as PILImageResampling  # Fallback for older PIL versions
 
 from transformers.image_processing_utils import BaseImageProcessor, BatchFeature
 from transformers.utils import TensorType
