@@ -1,11 +1,10 @@
 import logging
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Tuple, List
 
 import torch
 import transformers
 from deepspeed import zero
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-from transformers import AutoProcessor
 
 
 def maybe_zero_3(

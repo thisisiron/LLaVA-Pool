@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from ...hparams import DataArguments, FinetuningArguments, GeneratingArguments, ModelArguments
 
 
-from omegaconf import OmegaConf
 def run_pret(
     model_args: "ModelArguments",
     data_args: "DataArguments",
