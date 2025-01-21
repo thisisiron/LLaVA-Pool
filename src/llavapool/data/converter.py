@@ -143,7 +143,6 @@ class BaseConverter:
         video_processor = getattr(self.processor, 'video_processor', None) or image_processor
 
         image_resolution = getattr(self.processor, "image_resolution", 640)
-
         input_dict = {"images": None}
 
         if len(images) != 0:
@@ -152,13 +151,13 @@ class BaseConverter:
                 image_resolution=image_resolution,
                 **kwargs
             )
-        
+
         if len(videos) != 0:
             input_dict["videos"] = self._get_videos(
                 videos, 
                 **kwargs
         )
-        
+
         visual_inputs = {}
         if input_dict.get("images") is not None:
             visual_inputs.update(image_processor(input_dict["images"], return_tensors="pt"))
@@ -204,18 +203,18 @@ class BaseConverter:
 
     def _replace_tokens(self, template: str, **kwargs) -> str:
         result = template
-        
+
         for key, value in kwargs.items():
             result = result.replace("{{" + key + "}}", str(value))
-        
+
         token_pattern = r'\{\{(\w+_token)\}\}'  # ex. bos_token, eos_token
-        
+
         for match in re.finditer(token_pattern, result):
             token_name = match.group(1)
             
             token_value = getattr(self.tokenizer, token_name, "")
             result = result.replace("{{" + token_name + "}}", token_value)
-            
+
         return result
 
     def _encode(

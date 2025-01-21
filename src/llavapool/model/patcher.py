@@ -62,8 +62,8 @@ def get_downsample_ratio(config: "PretrainedConfig") -> float:
     return ratio
 
 
-def get_num_image_token(processor: "ProcessorMixin") -> int:
-    num_image_token = int((processor.image_resolution // processor.patch_size) ** 2 * (processor.downsample_ratio ** 2))
+def get_num_image_token(config: "PretrainedConfig") -> int:
+    num_image_token = int((config.vision_config.image_size // config.vision_config.patch_size) ** 2 * (config.downsample_ratio ** 2))
     return num_image_token
 
 
@@ -81,10 +81,10 @@ def patch_processor(
     setattr(processor, "video_fps", model_args.video_fps)
     setattr(processor, "video_maxlen", model_args.video_maxlen)
     setattr(processor, "vision_feature_select_strategy", get_vision_feature_select_strategy(config))
-    
+
     if config.model_type == "internvl_chat":
         setattr(processor, "downsample_ratio", get_downsample_ratio(config))
-        setattr(processor, "num_image_token", get_num_image_token(processor))
+        setattr(processor, "num_image_token", get_num_image_token(config))
 
 
 def patch_config(
