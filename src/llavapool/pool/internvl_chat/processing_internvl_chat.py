@@ -66,6 +66,8 @@ class InternVLChatProcessor(ProcessorMixin):
             )
             encoding.update(text_features)
 
+        # TODO: convert image placeholder to image token
+
         return BatchFeature(data=encoding)
 
     def batch_decode(self, *args, **kwargs):

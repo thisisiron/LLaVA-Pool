@@ -58,7 +58,7 @@ def make_batched_images(images) -> List[List[ImageInput]]:
 class InternVLChatImageProcessor(BaseImageProcessor):
     """
     Image processor for InternVL models. Handles dynamic tiling and preprocessing of images.
-    
+
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):
             Whether to resize the image's (height, width) dimensions to the specified size.
