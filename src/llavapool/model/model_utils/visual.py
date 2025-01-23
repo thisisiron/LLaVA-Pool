@@ -154,6 +154,9 @@ def get_forbidden_modules(config: "PretrainedConfig", finetuning_args: "Finetuni
 
         if finetuning_args.train_mm_proj_only:
             raise ValueError("Qwen2-VL models do not support `train_mm_proj_only`.")
+    
+    else:
+        raise ValueError("Unsupported model type for forbidden modules.")
 
     return forbidden_modules
 
