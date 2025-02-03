@@ -24,9 +24,6 @@ import torch
 import torch.nn as nn
 from transformers.models.llama.modeling_llama import (
     Cache,
-    LlamaAttention,
-    LlamaFlashAttention2,
-    LlamaSdpaAttention,
     apply_rotary_pos_emb,
     repeat_kv,
 )
@@ -35,8 +32,11 @@ from transformers.utils.versions import require_version
 
 from ...utils.constants import SUPPORTED_CLASS_FOR_S2ATTN
 from ...utils.logging import get_logger
-from ...utils.packages import is_transformers_version_greater_than_4_43
+from ...utils.packages import is_transformers_version_greater_than
 
+
+if not is_transformers_version_greater_than("4.48.0"):
+    from transformers.models.llama.modeling_llama import LlamaAttention, LlamaFlashAttention2, LlamaSdpaAttention
 
 if TYPE_CHECKING:
     from transformers import PretrainedConfig
@@ -209,7 +209,7 @@ def llama_flash_attention_2_forward(
         if attention_mask is not None:
             attention_mask = attention_mask[:, :groupsz].repeat(num_groups, 1)
 
-    if is_transformers_version_greater_than_4_43():
+    if is_transformers_version_greater_than("4.43.0"):
         from transformers.modeling_flash_attention_utils import _flash_attention_forward
 
         attn_output: "torch.Tensor" = _flash_attention_forward(
@@ -353,7 +353,7 @@ def llama_sdpa_attention_forward(
 
 
 def _apply_llama_patch() -> None:
-    require_version("transformers>=4.41.2,<=4.45.2", "To fix: pip install transformers>=4.41.2,<=4.45.2")
+    require_version("transformers>=4.41.2,<=4.48.2", "To fix: pip install transformers>=4.41.2,<=4.48.2")
     LlamaAttention.forward = llama_attention_forward
     LlamaFlashAttention2.forward = llama_flash_attention_2_forward
     LlamaSdpaAttention.forward = llama_sdpa_attention_forward

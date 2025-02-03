@@ -15,7 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import TYPE_CHECKING, List, Sequence, Set, Tuple, Union
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, List, Sequence, Set, Tuple, Union, Dict, Optional
 
 import torch
 import transformers.models
@@ -33,6 +34,39 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 transformers_logger = logging.get_logger(__name__)
+
+
+@dataclass
+class CompositeModel:
+    model_type: str
+    projector_key: str
+    vision_model_keys: List[str]
+    language_model_keys: List[str]
+
+    def get_projector(self, module: "torch.nn.Module") -> "torch.nn.Module":
+        for key in self.projector_key.split("."):
+            module = getattr(module, key)
+
+        return module
+
+COMPOSITE_MODELS: Dict[str, "CompositeModel"] = {}
+
+
+def _register_composite_model(
+    model_type: str,
+    projector_key: Optional[str] = None,
+    vision_model_keys: Optional[List[str]] = None,
+    language_model_keys: Optional[List[str]] = None,
+):
+    projector_key = projector_key or "multi_modal_projector"
+    vision_model_keys = vision_model_keys or ["vision_tower"]
+    language_model_keys = language_model_keys or ["language_model"]
+    COMPOSITE_MODELS[model_type] = CompositeModel(
+        model_type=model_type,
+        projector_key=projector_key,
+        vision_model_keys=vision_model_keys,
+        language_model_keys=language_model_keys,
+    )
 
 
 class LlavaMultiModalProjectorForYiVL(torch.nn.Module):
@@ -92,14 +126,12 @@ def autocast_projector_dtype(model: "PreTrainedModel", model_args: "ModelArgumen
 
     if getattr(model, "quantization_method", None):
         model_type = getattr(model.config, "model_type", None)
-        if model_type in ["llava", "llava_next", "llava_next_video", "mllama", "paligemma", "video_llava"]:
-            mm_projector: "torch.nn.Module" = getattr(model, "multi_modal_projector")
-        elif model_type == "qwen2_vl":
-            mm_projector: "torch.nn.Module" = getattr(getattr(model, "visual"), "merger")
+        if model_type in COMPOSITE_MODELS:
+            mm_projector = COMPOSITE_MODELS[model_type].get_projector(model)
         else:
             return
 
-        logger.info("Casting multimodal projector outputs in {}.".format(model_args.compute_dtype))
+        logger.info(f"Casting multimodal projector outputs in {model_args.compute_dtype}.")
         mm_projector.register_forward_hook(_mm_projector_forward_post_hook)
 
 
@@ -107,21 +139,11 @@ def configure_visual_model(config: "PretrainedConfig") -> None:
     r"""
     Patches VLMs before loading them.
     """
-    model_type = getattr(config, "model_type", None)
-    if model_type in [
-        "llava",
-        "llava_next",
-        "llava_next_video",
-        "mllama",
-        "paligemma",
-        "video_llava",
-        "internvl_chat",
-    ]:  # required for ds zero3 and valuehead models
-        if getattr(config, "text_config", None) is not None:
-            setattr(config, "hidden_size", config.text_config.hidden_size)
-        elif getattr(config, "llm_config", None) is not None:
-            setattr(config, "hidden_size", config.llm_config.hidden_size)
-        # setattr(config, "hidden_size", getattr(config.text_config, "hidden_size", None))
+    if getattr(config, "text_config", None) and not getattr(config, "hidden_size", None):
+        # required for ds zero3 and valuehead models
+        setattr(config, "hidden_size", getattr(config.text_config, "hidden_size", None))
+    elif getattr(config, "llm_config", None) is not None:
+            setattr(config, "hidden_size", getattr(config.llm_config, "hidden_size", None))
 
     if getattr(config, "is_yi_vl_derived_model", None):
         logger.info("Detected Yi-VL model, applying projector patch.")
@@ -134,29 +156,21 @@ def get_forbidden_modules(config: "PretrainedConfig", finetuning_args: "Finetuni
     """
     model_type = getattr(config, "model_type", None)
     forbidden_modules = set()
-    if model_type in ["llava", "llava_next", "llava_next_video", "paligemma", "video_llava"]:
+    if model_type in COMPOSITE_MODELS:
         if finetuning_args.freeze_vision_tower:
-            forbidden_modules.add("vision_tower")
+            vision_model_keys = COMPOSITE_MODELS[model_type].vision_model_keys
+            logger.info(f"Set vision model not trainable: {vision_model_keys}.")
+            forbidden_modules.update(vision_model_keys)
+
+        if finetuning_args.freeze_multi_modal_projector:
+            projector_key = COMPOSITE_MODELS[model_type].projector_key
+            logger.info(f"Set multi model projector not trainable: {projector_key}.")
+            forbidden_modules.add(projector_key)
 
         if finetuning_args.train_mm_proj_only:
-            forbidden_modules.add("language_model")
-    
-    elif model_type in ["mllama", "honeybee"]:
-        if finetuning_args.freeze_vision_tower:
-            forbidden_modules.add("vision_model")
-
-        if finetuning_args.train_mm_proj_only:
-            forbidden_modules.add("language_model")
-
-    elif model_type == "qwen2_vl":
-        if finetuning_args.freeze_vision_tower:
-            forbidden_modules.add("visual")
-
-        if finetuning_args.train_mm_proj_only:
-            raise ValueError("Qwen2-VL models do not support `train_mm_proj_only`.")
-    
-    else:
-        raise ValueError("Unsupported model type for forbidden modules.")
+            language_model_keys = COMPOSITE_MODELS[model_type].language_model_keys
+            logger.info(f"Set language model not trainable: {language_model_keys}.")
+            forbidden_modules.update(language_model_keys)
 
     return forbidden_modules
 
@@ -178,19 +192,21 @@ def get_image_seqlen(config: "PretrainedConfig") -> int:
     return image_seqlen
 
 
-def get_patch_size(config: "PretrainedConfig") -> int:
+def get_patch_size(config: "PretrainedConfig", processor: "ProcessorMixin") -> int:
     r"""
     Computes the patch size of the vit.
     """
-    patch_size = getattr(config.vision_config, "patch_size", -1)
+    patch_size = getattr(config.vision_config, "patch_size", getattr(processor, "patch_size", -1))
     return patch_size
 
 
-def get_vision_feature_select_strategy(config: "PretrainedConfig") -> int:
+def get_vision_feature_select_strategy(config: "PretrainedConfig", processor: "ProcessorMixin") -> int:
     r"""
     Get the vision_feature_select_strategy.
     """
-    vision_feature_select_strategy = getattr(config, "vision_feature_select_strategy", "default")
+    vision_feature_select_strategy = getattr(
+        config, "vision_feature_select_strategy", getattr(processor, "vision_feature_select_strategy", "default")
+    )
     return vision_feature_select_strategy
 
 
@@ -200,22 +216,87 @@ def patch_target_modules(
     r"""
     Freezes vision tower for VLM LoRA tuning.
     """
-    
     model_type = getattr(config, "model_type", None)
     vit_model_type = getattr(getattr(config, "vision_config", None), "model_type", None)
     if finetuning_args.freeze_vision_tower:
-        if model_type in ["llava", "llava_next", "llava_next_video", "paligemma", "video_llava"]:
-            return "^(?!.*vision_tower).*(?:{}).*".format("|".join(target_modules))
-        elif model_type == "mllama":
-            return "^(?!.*vision_model).*(?:{}).*".format("|".join(target_modules))
-        elif model_type == "qwen2_vl":
-            return "^(?!.*visual).*(?:{}).*".format("|".join(target_modules))
+        if model_type in COMPOSITE_MODELS:
+            vision_model_keys = COMPOSITE_MODELS[model_type].vision_model_keys
+            logger.info(f"Set vision model not trainable: {vision_model_keys}.")
+            vision_model_keys = "|".join(vision_model_keys)
+            target_modules = "|".join(target_modules)
+            return f"^(?!.*{vision_model_keys}).*(?:{target_modules}).*"
         else:
             return target_modules
     else:
-        if model_type == "qwen2_vl":
+        if model_type == "qwen2_vl":  # avoid attaching lora to Conv3D layer
             return "^(?!.*patch_embed).*(?:{}).*".format("|".join(target_modules))
         elif vit_model_type == "pixtral":
             return "^(?!.*patch_conv).*(?:{}).*".format("|".join(target_modules))
         else:
             return target_modules
+
+
+_register_composite_model(
+    model_type="llava",
+)
+
+
+_register_composite_model(
+    model_type="llava_next",
+)
+
+
+_register_composite_model(
+    model_type="llava_next_video",
+)
+
+
+_register_composite_model(
+    model_type="minicpmv",
+    vision_model_keys=["vpm"],
+    language_model_keys=["llm"],
+)
+
+
+_register_composite_model(
+    model_type="minicpmo",
+    vision_model_keys=["vpm", "apm", "resampler", "tts"],
+    language_model_keys=["llm"],
+)
+
+
+_register_composite_model(
+    model_type="paligemma",
+)
+
+
+_register_composite_model(
+    model_type="video_llava",
+)
+
+
+_register_composite_model(
+    model_type="mllama",
+    vision_model_keys=["vision_model"],
+)
+
+
+_register_composite_model(
+    model_type="honeybee",
+    vision_model_keys=["vision_model"],
+)
+
+_register_composite_model(
+    model_type="qwen2_vl",
+    projector_key="visual.merger",
+    vision_model_keys=["visual.patch_embed", "visual.blocks"],
+    language_model_keys=["model", "lm_head"],
+)
+
+
+_register_composite_model(
+    model_type="qwen2_5_vl",
+    projector_key="visual.merger",
+    vision_model_keys=["visual.patch_embed", "visual.blocks"],
+    language_model_keys=["model", "lm_head"],
+)
