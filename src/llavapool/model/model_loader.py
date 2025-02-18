@@ -169,9 +169,12 @@ def config_class_from_name(model_name: str):
 
 
 def model_class_from_name(model_name: str):
+    if MODEL_MAPPING_NAMES.get(model_name) is None:
+        return None
     class_name = MODEL_MAPPING_NAMES[model_name]
     module = importlib.import_module(f"..pool.{model_name}", __package__)
     return getattr(module, class_name)
+
 
 def load_processor(model_args: "ModelArguments", tokenizer: "PreTrainedTokenizer") -> "ProcessorMixin":
     init_kwargs = _get_init_kwargs(model_args)
@@ -253,6 +256,8 @@ def load_auto_model(
 
         if model_args.mixture_of_depths == "load":
             model = load_mod_pretrained_model(**init_kwargs)
+        elif model_class_from_name(config.model_type) is not None:
+            model = model_class_from_name(config.model_type).from_pretrained(**init_kwargs)
         else:
             if type(config) in AutoModelForVision2Seq._model_mapping.keys():  # assume built-in models
                 load_class = AutoModelForVision2Seq

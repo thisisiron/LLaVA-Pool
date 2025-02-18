@@ -292,6 +292,19 @@ _register_template(
 
 
 _register_template(
+    name="llava_onevision",
+    format_system="<|im_start|>system\n{{content}}<|im_end|>\n",
+    format_user="<|im_start|>user {{content}}<|im_end|><|im_start|>assistant\n",
+    format_assistant="{{content}}<|im_end|>",
+    format_separator="\n",
+    stop_words=["<|im_end|>"],
+    replace_eos=True,
+    replace_jinja_template=False,
+    image_token="<image>",
+)
+
+
+_register_template(
     name="llama3.2_vision",
     format_prefix="<|begin_of_text|>",
     format_system="<|start_header_id|>system<|end_header_id|>\n\n{{content}}<|eot_id|>",
@@ -347,3 +360,12 @@ _register_template(
     replace_eos=True,
     image_token="<IMG_CONTEXT>"
 )
+
+# _register_template(
+#     name="deepseekv2",
+#     default_system=(
+#         "You are a helpful assistant. "
+#         "Please answer truthfully and write out your thinking step by step to be sure you get the right answer."
+#     )
+#     format_system="<s><|im_start|>system\n{{content}}<|im_end|>\n",
+#     format_user="<|im_start|>user\n{{content}}<|im_end|>\n<|im_start|>assistant\n",
