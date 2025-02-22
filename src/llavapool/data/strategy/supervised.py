@@ -8,7 +8,6 @@ from ...utils.constants import IGNORE_INDEX
 logger = logging.get_logger(__name__)
 
 
-
 class SupervisedStrategy(StrategyMixin):
     def _encode(
         self,

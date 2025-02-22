@@ -113,7 +113,7 @@ def load_tokenizer_and_processor(model_args: "ModelArguments") -> "TokenizerModu
             image_processor = image_processor_class_from_name(config.model_type)()
             processor = processor_class_from_name(config.model_type)(image_processor, tokenizer)
             patch_processor(processor, config, tokenizer, model_args)
-
+    
     return {"tokenizer": tokenizer, "processor": processor}
 
 
