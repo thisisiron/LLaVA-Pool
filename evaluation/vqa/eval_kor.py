@@ -1,4 +1,3 @@
-
 from llavapool.hparams import get_eval_args
 from llavapool.model import load_tokenizer_and_processor, load_model
 from llavapool.data import load_converter
@@ -31,7 +30,7 @@ def map_function(data, prompt, train_dataset, few_shot):
     return convert_to_vqa_format(data, examples, prompt)
 
 
-def _parse_vqa(example: Dict[str, str], prompt="Answer:") -> Tuple[str, str]:
+def _parse_vqa(example: Dict[str, str], prompt="Answer:", is_fewshot=False) -> Tuple[str, str]:
     r"""
     input: a dict with keys {"question", "A", "B", "C", "D", "answer"}
     output: a tuple of (prompt, response)
@@ -44,6 +43,7 @@ def _parse_vqa(example: Dict[str, str], prompt="Answer:") -> Tuple[str, str]:
     if not choices:
         choices = {ch: example[ch] for ch in "ABCD" if ch in example}
 
+    prompt = prompt.replace("<image>\n", "").replace("<image>", "").strip()
     prompt = prompt.format(
         question=example["question"],
         A=choices["A"],
@@ -60,14 +60,18 @@ def convert_to_vqa_format(data, examples, prompt):
 
     for k in range(len(examples)):
         example = examples[k]
-        question, answer = _parse_vqa(example, prompt)
+        question, answer = _parse_vqa(example, prompt, is_fewshot=True)
         messages.append({
             "role": Role.USER,
-            "content": question,
+            "content": [
+                {"type": "text", "text": question},
+            ]
         })
         messages.append({
             "role": Role.ASSISTANT,
-            "content": answer,
+            "content": [
+                {"type": "text", "text": answer},
+            ]
         })
 
     # if "<image>" not in data['question']:
@@ -76,41 +80,49 @@ def convert_to_vqa_format(data, examples, prompt):
     question, answer = _parse_vqa(data, prompt)
     messages.append({
         "role": Role.USER,
-        "content": question,
+        "content": [
+            {"type": "image"},
+            {"type": "text", "text": question},
+        ]
     })
-    messages.append({
-        "role": Role.ASSISTANT,
-        "content": answer,
-    })
+    
+    # messages.append({
+    #     "role": Role.ASSISTANT,
+    #     "content": [
+    #         {"type": "text", "text": answer},
+    #     ]
+    # })
 
     return {
         "_prompt": messages, 
         "_images": data['image'],
+        "_question": question,
         "_answer": data['answer']
     }
 
-def collate_fn(batch, converter):
-    model_inputs = defaultdict(list)
-    
+def collate_fn(batch, processor):
+    prompts = []
+    images = []
+    questions = []
+    answers = []
     for data in batch:
-        prompt = data["_prompt"]
-        images = data["_images"]
-        answer = data["_answer"]
+        prompts.append(data["_prompt"])
+        images.append(data["_images"])
+        questions.append(data["_question"])
+        answers.append(data["_answer"])
 
-        input_ids, _ = converter.encode_single_turn(prompt, [images], [])
+    text = processor.apply_chat_template(prompts, tokenize=False, add_generation_prompt=True)
+    inputs = processor(
+        text=text,
+        images=images,
+        return_tensors="pt"
+    )
+    inputs.update({
+        "answer": answers,
+        "question": questions,
+    })
 
-        model_inputs["input_ids"].append(input_ids)
-        model_inputs["attention_mask"].append([1] * len(input_ids))
-        model_inputs["answer"].append(answer)
-        model_inputs["images"].append(data["_images"])
-        model_inputs["prompt"].append(prompt)
-
-    model_inputs.update(converter.get_visual_inputs(model_inputs["images"], [], input_ids))
-    model_inputs.pop("images")
-    model_inputs["input_ids"] = torch.tensor(model_inputs["input_ids"])
-    model_inputs["attention_mask"] = torch.tensor(model_inputs["attention_mask"])
-    
-    return model_inputs
+    return inputs
 
 
 def to_device(batch, device='cuda'):
@@ -124,9 +136,20 @@ def main():
     tokenizer_module = load_tokenizer_and_processor(model_args)  # processor exists or not
     tokenizer = tokenizer_module["tokenizer"]
     processor = tokenizer_module["processor"]
-
+    
     model = load_model(tokenizer, model_args, finetung_args)
+    # model = model.eval()
 
+    # from transformers import AutoModel, AutoTokenizer
+    # path = "OpenGVLab/InternVL2_5-4B"
+    # path = "output/internvl2_5-8b/full/test/checkpoint-10000"
+    # model = AutoModel.from_pretrained(
+    #     path,
+    #     torch_dtype=torch.bfloat16,
+    #     low_cpu_mem_usage=True,
+    #     use_flash_attn=True,
+    # trust_remote_code=True).eval().cuda()
+    
     # os.makedirs(eval_args.save_dir, exist_ok=True)
 
     base_prompt = (
@@ -135,13 +158,6 @@ def main():
         "Options:\nA. {A}\nB. {B}\nC. {C}\nD. {D}\n"
         "주어진 선택지 중 해당 옵션의 문자로 직접 답하세요.\n"
     )
-
-    # base_prompt = (
-    #     "<image>\n"
-    #     "{question}\n"
-    #     "Options: A: {A} B: {B} C: {C} D: {D}\n"
-    #     "주어진 선택지 중 해당 옵션의 문자로 직접 답하세요.\n"
-    # )
 
     print('datasets:', data_args.eval_dataset)
     dataset = load_dataset("NCSOFT/K-DTCBench")
@@ -161,8 +177,6 @@ def main():
         batched=False
     )
 
-    converter = load_converter(processor, data_args)
-
     dataloader = torch.utils.data.DataLoader(
         dataset=dataset["test"],
         # sampler=InferenceSampler(len(dataset)),
@@ -170,41 +184,61 @@ def main():
         num_workers=0,  # eval_args.num_workers,
         pin_memory=True,
         drop_last=False,
-        collate_fn=partial(collate_fn, converter=converter),
+        collate_fn=partial(collate_fn, processor=processor),
     )
 
-    merged_outputs = []
+    merged_outputs = defaultdict(list)
     with torch.no_grad():
         for inputs in tqdm(dataloader):
             answer = inputs.pop('answer')
-            prompt = inputs.pop('prompt')
+            question = inputs.pop('question')
             inputs = to_device(inputs, 'cuda')
+            inputs['pixel_values'] = inputs['pixel_values'].to(torch.bfloat16)
+            print(inputs['pixel_values'].shape)
 
             pred = model.generate(
                 **inputs, 
-                max_new_tokens=1024,
+                max_new_tokens=4092,
+                eos_token_id=tokenizer.eos_token_id,
             )
 
             outputs = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs['input_ids'], pred)]
             outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-            merged_outputs.append({
-                'pormpt': prompt,
-                'pred': outputs[0],
-                'answer': answer[0],
-            })
-    
+
+            merged_outputs['question'] += question
+            merged_outputs['answer'] += answer
+            merged_outputs['pred'] += outputs
+            
     cnt = 0
-    for item in merged_outputs:
-        target = item['answer'].strip().lower()
-        pred = item['pred'].strip().lower()
+    for i in range(len(merged_outputs['question'])):
+        target = merged_outputs['answer'][i].strip().lower()
+        pred = merged_outputs['pred'][i].strip().lower()
         if pred == target:
             cnt += 1
         elif len(pred) >= 2 and pred[0] in 'abcd':
             if pred[0] == target:
                 cnt += 1
-    print(f"Acc@1: {cnt / len(merged_outputs)}")
-    import pdb;pdb.set_trace()
 
+    print(f"Acc@1: {cnt / len(merged_outputs['question'])}")
+
+    import csv
+
+    # Define CSV file path
+    csv_file_path = "evaluation_results.csv"
+
+    # Save results to CSV
+    with open(csv_file_path, mode="w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        # Write header
+        writer.writerow(["question", "answer", "pred"])
+
+        # Write data
+        for i in range(len(merged_outputs['question'])):
+            # 두 단계의 인덱싱으로 중첩 리스트 내의 첫 번째 질문 텍스트를 추출합니다.
+            question_text = merged_outputs['question'][i]
+            writer.writerow([question_text, merged_outputs['answer'][i], merged_outputs['pred'][i]])
+
+    print(f"Results saved to {csv_file_path}")
 
 
 if __name__ == "__main__":
