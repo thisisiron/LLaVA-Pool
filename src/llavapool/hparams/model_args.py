@@ -152,11 +152,11 @@ class VllmArguments:
         default=None,
         metadata={"help": "Path to the vision weight or identifier from huggingface.co/models or modelscope.cn/models."},
     )
-    vision_encoder_type: Optional[str] = field(
+    projector_type: Optional[str] = field(
         default=None,
-        metadata={"help": "Type of vision encoder to use."},
+        metadata={"help": "Type of projector to use."},
     )
-    llm_name_or_path: Optional[str] = field(
+    text_name_or_path: Optional[str] = field(
         default=None,
         metadata={"help": "Path to the language model weight or identifier from huggingface.co/models or modelscope.cn/models."},
     )

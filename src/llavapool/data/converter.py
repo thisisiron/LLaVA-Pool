@@ -18,6 +18,8 @@ from ..utils.constants import IMAGE_PLACEHOLDER, VIDEO_PLACEHOLDER
 from .template import get_template_and_fix_tokenizer
 from .data_loader import Role
 
+Image.MAX_IMAGE_PIXELS = None
+
 
 IMAGE_FACTOR = 28
 MIN_PIXELS = 4 * 28 * 28
@@ -79,8 +81,10 @@ class BaseConverter:
         return self.convert()
 
     def _preprocess_image(self, image, **kwargs):
-        image = image.convert("RGB")
-        image = basic_resize(image, image_resolution=kwargs.get("image_resolution", 640))
+        image_resolution = kwargs.get("image_resolution", None)
+        if image_resolution is not None:
+            image = basic_resize(image, image_resolution=image_resolution)
+        
         return image
 
     def _get_images(self, images, **kwargs):
@@ -91,15 +95,16 @@ class BaseConverter:
                 pil_image = Image.open(image)
             elif isinstance(image, Image.Image):
                 pil_image = image
-            
+
             if pil_image is None:
                 raise ValueError("Invalid image type")
             
+            pil_image = pil_image.convert("RGB")
             pil_image = self._preprocess_image(pil_image, **kwargs)
             preprocessed_images.append(pil_image)
 
         return preprocessed_images
-    
+
     def _get_videos(self, videos, **kwargs):
         preprocessed_videos = []
         for video in videos:
@@ -142,7 +147,7 @@ class BaseConverter:
         image_processor = self.processor.image_processor
         video_processor = getattr(self.processor, 'video_processor', None) or image_processor
 
-        image_resolution = getattr(self.processor, "image_resolution", 640)
+        image_resolution = getattr(self.processor, "image_resolution", 512)
         input_dict = {"images": None}
 
         if len(images) != 0:
@@ -166,6 +171,9 @@ class BaseConverter:
         return visual_inputs
 
     def process_media_tokens(self, messages, images, videos):
+        r"""
+        Processes media tokens in the messages.
+        """
         # raise NotImplementedError("This method must be implemented in the subclass")
         self._check_input(images, videos)
         num_image_tokens = 0
@@ -179,22 +187,7 @@ class BaseConverter:
             raise ValueError(f"The number of images does not match the number of {IMAGE_PLACEHOLDER} tokens.")
 
         return messages
-
-    def encode_multi_turn(
-        self,
-        messages: Sequence[Dict[str, str]],
-        images: Sequence[str],
-        videos: Sequence[str],
-        system: Optional[str] = None,
-        tools: Optional[str] = None,
-    ) -> List[Tuple[List[int], List[int]]]:
-        r"""
-        Returns multiple pairs of token ids representing prompts and responses respectively.
-        """
-        messages = self.process_media_tokens(messages, images, videos)
-        encoded_messages = self._encode(messages, system, tools)
-        return [(encoded_messages[i], encoded_messages[i + 1]) for i in range(0, len(encoded_messages), 2)]
-
+        
     def extract_tool(self, content: str) -> Union[str, List[Tuple[str, str]]]:
         r"""
         Extracts tool message.
@@ -270,7 +263,22 @@ class BaseConverter:
 
             encoded_messages.append(self.tokenizer.encode(current_message, add_special_tokens=False))
         return encoded_messages
-
+    
+    def encode_multi_turn(
+        self,
+        messages: Sequence[Dict[str, str]],
+        images: Sequence[str],
+        videos: Sequence[str],
+        system: Optional[str] = None,
+        tools: Optional[str] = None,
+    ) -> List[Tuple[List[int], List[int]]]:
+        r"""
+        Returns multiple pairs of token ids representing prompts and responses respectively.
+        """
+        messages = self.process_media_tokens(messages, images, videos)
+        encoded_messages = self._encode(messages, system, tools)
+        return [(encoded_messages[i], encoded_messages[i + 1]) for i in range(0, len(encoded_messages), 2)]
+    
     def encode_single_turn(
         self,
         messages: Sequence[Dict[str, str]],
@@ -325,7 +333,7 @@ class Qwen2vlConverter(BaseConverter):
     ):
         self._check_input(images, videos)
         image_processor = self.processor.image_processor
-        merge_length: int = image_processor.merge_size ** 2
+        merge_length = image_processor.merge_size ** 2
         visual_inputs = self.get_visual_inputs(images, videos, **kwargs)
         image_grid_thw = visual_inputs.get("image_grid_thw", [])
         video_grid_thw = visual_inputs.get("video_grid_thw", [])
@@ -387,7 +395,7 @@ class LlavaNextConverter(BaseConverter):
             content = message["content"]
             while self.image_token in content:
                 image_size = next(image_sizes)
-                orig_height, orig_width = image_size
+                orig_height, orig_width = image_size[0].item(), image_size[1].item()
                 image_seqlen = self.processor._get_number_of_features(orig_height, orig_width, height, width)
                 if self.processor.vision_feature_select_strategy == "default":
                     image_seqlen -= 1
@@ -565,13 +573,36 @@ class InternVLChatConverter(BaseConverter):
         return messages
 
 
+# class DeepSeekVLV2Converter(BaseConverter):
+#     @override
+#     def process_media_tokens(
+#         self,
+#         messages: Sequence[Dict[str, str]],
+#         images: Sequence["ImageInput"],
+#         videos: Sequence["VideoInput"],
+#     ) -> List[Dict[str, str]]:
+#         self._check_input(images, videos)
+#         num_image_tokens = 0
+#         messages = deepcopy(messages)
+#         for message in messages:
+#             content = message["content"]
+#             num_image_tokens += content.count(IMAGE_PLACEHOLDER)
+#             message["content"] = content.replace(IMAGE_PLACEHOLDER, self.image_token)
+
+#         if len(images) != num_image_tokens:
+#             raise ValueError(f"The number of images does not match the number of {IMAGE_PLACEHOLDER} tokens.")
+
+#         return messages
+
+
 CONVERTERS = {
     "default": BaseConverter,
     "qwen2_vl": Qwen2vlConverter,
     "llava_next": LlavaNextConverter,
     "llama3.2_vision": MllamaConverter,
     "pixtral": PixtralConverter,
-    "internvl2_5": InternVLChatConverter
+    "internvl2_5": InternVLChatConverter,
+    "llava_onevision": LlavaNextConverter,
 }
 
 

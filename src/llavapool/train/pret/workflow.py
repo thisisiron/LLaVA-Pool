@@ -27,7 +27,7 @@ def run_pret(
 
     tokenizer = load_tokenizer(model_args)
     processor = load_processor(model_args, tokenizer)
-    converter = load_converter(processor, data_args)
+    converter = load_converter(processor, tokenizer, data_args)
     dataset_module = load_dataset_module(
         converter=converter,
         data_args=data_args,
