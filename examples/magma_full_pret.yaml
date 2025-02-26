@@ -1,8 +1,12 @@
 ### model
-model_name_or_path: "Qwen/Qwen2-VL-7B-Instruct"
+model_name_or_path: "magma"
+vision_name_or_path: "openai/clip-vit-large-patch14"
+text_name_or_path: "Qwen/Qwen2.5-7B-Instruct-1M"
+projector_type: "mlp"
+new_special_tokens: "<|image|>, <|vision_start|>, <|vision_end|>"
 
 ### method
-stage: sft
+stage: pret
 do_train: true
 finetuning_type: full
 freeze_vision_tower: false
@@ -10,17 +14,18 @@ train_mm_proj_only: false
 deepspeed: scripts/deepspeed/zero3.json
 
 ### dataset
-dataset: aihub_table,aihub_chart,aihub_math,aihub_ocr,docvqa,arxivqa,ocr-vqa-200k,figureqa
+# dataset: ocr-vqa-200k
+dataset: demo
 template: qwen2_vl
 cutoff_len: 32768
 overwrite_cache: true
 preprocessing_num_workers: 80
 
 ### output
-output_dir: output/qwen2_vl-7b/full/ko-en_docai_qwen2vl_train-vit_cl8192_wodocvqa25k
+output_dir: output/magama/test
 logging_steps: 100
 save_steps: 20000
-overwrite_output_dir: true
+overwrite_output_dir: false
 
 ### train
 per_device_train_batch_size: 1

@@ -22,7 +22,7 @@ pip install flash-attn --no-build-isolation
 Provide detailed instructions on how to prepare the data for training.
 
 ## Pre-training Model
-Instructions for pre-training the model.
+Magma(Multimodal AI Generation and Model Architecture) is a pre-trained model that can be used for various tasks. It is designed to be flexible and adaptable to different use cases. You select the model you want to use based on your needs. If you want to use the Qwen2.5 as the LLM model and SigLIP as the vision model, modify the config of the Magma model to use them.
 
 ## SFT Model List
 
