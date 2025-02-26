@@ -38,35 +38,44 @@ class InternVLChatProcessor(ProcessorMixin):
         self,
         images: Optional[ImageInput] = None,
         text: Optional[Union[TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]]] = None,
-        add_end_token: bool = True,
         padding: bool = False,
         **kwargs
     ) -> BatchFeature:
-        if text is None and images is None:
-            raise ValueError("You have to specify either text or images. Both cannot be none.")
+        if text is None:
+            raise ValueError("Input text cannot be None")
 
-        if text is not None and images is not None and self.image_token not in text:
-            logger.warning(
-                f"You have passed both `text`: {text} and `images`: {len(images)} but no `{self.image_token}` "
-                "token found in the text. The image will be processed but not properly matched with text."
-            )
+        if not isinstance(text, list):
+            text = [text]
+        elif not isinstance(text, list) and not isinstance(text[0], str):
+            raise ValueError("Invalid input text. Please provide a string, or a list of strings")
+
+        total_placeholders = sum(text_item.count(self.image_placeholder) for text_item in text)
 
         encoding = {}
-
         if images is not None:
-            image_features = self.image_processor(images, **kwargs)
-            encoding.update(image_features)
+            image_inputs = self.image_processor(images, **kwargs)
+            encoding.update(image_inputs)
 
-        if text is not None:
-            text_features = self.tokenizer(
-                text,
-                add_special_tokens=True,
-                padding=padding,
-                **kwargs
-            )
-            encoding.update(text_features)
+            # Check if number of images matches placeholders
+            if len(image_inputs["num_patches"]) != total_placeholders:
+                raise ValueError(
+                    f"Number of image placeholders ({total_placeholders}) does not match "
+                    f"number of processed images ({len(image_inputs['num_patches'])})"
+                )
 
-        # TODO: convert image placeholder to image token
+            index = 0
+            for i in range(len(text)):
+                while self.image_placeholder in text[i]:
+                    text[i] = text[i].replace(
+                        self.image_placeholder,
+                        f"<img>{('<|place_holder|>' * image_inputs['num_patches'][index] * self.num_image_token)}</img>",
+                        1,
+                    )
+                    index += 1
+                text[i] = text[i].replace("<|place_holder|>", self.image_token)
+
+        text_features = self.tokenizer(text, add_special_tokens=True, padding=padding, **kwargs)
+        encoding.update(text_features)
 
         return BatchFeature(data=encoding)
 

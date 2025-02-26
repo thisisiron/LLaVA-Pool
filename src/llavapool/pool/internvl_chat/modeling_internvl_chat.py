@@ -13,7 +13,7 @@ import transformers
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from peft import LoraConfig, get_peft_model
-from transformers import (AutoModel, GenerationConfig, LlamaForCausalLM,
+from transformers import (AutoConfig, AutoModel, AutoModelForVision2Seq, GenerationConfig, LlamaForCausalLM,
                           LlamaTokenizer, Qwen2ForCausalLM)
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
@@ -320,3 +320,7 @@ class InternVLChatModel(PreTrainedModel):
             model_inputs["pixel_values"] = pixel_values
 
         return model_inputs
+
+# AutoConfig.register("internvl_chat", InternVLChatConfig)
+# # AutoModel.register("internvl_chat", InternVLChatModel)
+# AutoModelForVision2Seq.register(InternVLChatConfig, InternVLChatModel)
