@@ -1,3 +1,6 @@
+"""
+Script for uploading HuggingFace models, configurations, and processors to the hub
+"""
 import argparse
 import logging
 
@@ -14,48 +17,48 @@ logger = logging.getLogger(__name__)
 
 
 def get_args():
-    """커맨드 라인 인자를 파싱하는 함수"""
-    parser = argparse.ArgumentParser(description='HuggingFace 모델 업로드 스크립트')
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description='HuggingFace Model Upload Script')
     parser.add_argument(
         "--base_model",
         type=str,
         required=True,
-        help="업로드할 기본 모델 경로"
+        help="Path to the base model to upload"
     )
     parser.add_argument(
         "--repo_path",
         type=str,
         required=True,
-        help="HuggingFace Hub의 저장소 경로"
+        help="Repository path on HuggingFace Hub"
     )
     parser.add_argument(
         "--hf_token",
         type=str,
         default='',
-        help="HuggingFace 인증 토큰"
+        help="HuggingFace authentication token"
     )
     return parser.parse_args()
 
 
 def main():
-    """메인 실행 함수"""
+    """Main execution function"""
     args = get_args()
-    logger.info("모델 로딩 시작")
+    logger.info("Starting model loading")
 
-    # 설정, 모델, 프로세서 로딩
+    # Load config, model, and processor
     config = AutoConfig.from_pretrained(args.base_model)
     model = AutoModelForCausalLM.from_pretrained(args.base_model)
 
     try:
         processor = AutoProcessor.from_pretrained(args.base_model)
         has_processor = True
-        logger.info("프로세서 로딩 완료")
+        logger.info("Processor loaded successfully")
     except Exception as e:
-        logger.warning(f"프로세서를 찾을 수 없습니다: {e}")
+        logger.warning(f"No processor found: {e}")
         has_processor = False
 
-    # HuggingFace Hub 업로드 준비
-    logger.info(f"{args.repo_path}에 업로드 시작")
+    # Prepare for HuggingFace Hub upload
+    logger.info(f"Starting upload to {args.repo_path}")
     
     config.push_to_hub(
         args.repo_path,
@@ -75,9 +78,9 @@ def main():
             use_temp_dir=True,
             use_auth_token=args.hf_token
         )
-        logger.info("프로세서 업로드 완료")
+        logger.info("Processor uploaded successfully")
 
-    logger.info(f"모델이 {args.repo_path}에 성공적으로 업로드되었습니다.")
+    logger.info(f"Model successfully uploaded to {args.repo_path}")
 
 
 if __name__ == "__main__":
