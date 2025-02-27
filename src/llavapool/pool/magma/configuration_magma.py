@@ -4,6 +4,7 @@ from transformers import AutoConfig, CLIPVisionConfig
 from transformers.configuration_utils import PretrainedConfig
 from transformers.models.deformable_detr import DeformableDetrConfig
 from transformers.utils import logging
+from transformers.models.auto import CONFIG_MAPPING, AutoConfig
 from transformers.utils.constants import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
 
 from .utils import check_local_file
@@ -97,40 +98,82 @@ class MagmaVisualProjectorConfig(PretrainedConfig):
 
 class MagmaConfig(PretrainedConfig):
     model_type = "magma"
+    sub_configs = {"text_config": AutoConfig, "vision_config": AutoConfig}
+
     is_composition = True
 
     def __init__(
         self,
         vision_config: dict = None,
-        projector_config: dict = None,
         text_config: dict = None,
+        image_token_index=151646,
+        video_token_index=151647,
+        projector_type="mlp",
+        projector_hidden_act="gelu",
+        vision_feature_select_strategy="full",
+        vision_feature_layer=-1,
+        vision_aspect_ratio="anyres_max_9",
+        tie_word_embeddings=False,
+        multimodal_projector_bias=True,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        
+        self.image_token_index = image_token_index
+        self.video_token_index = video_token_index
+
+        self.projector_type = projector_type
+        self.projector_hidden_act = projector_hidden_act
+        self.multimodal_projector_bias = multimodal_projector_bias
+
+        if vision_feature_select_strategy not in ["default", "full"]:
+            raise ValueError(
+                "vision_feature_select_strategy should be one of 'default', 'full'."
+                f"Got: {vision_feature_select_strategy}"
+            )
+
+        self.vision_feature_select_strategy = vision_feature_select_strategy
+        self.vision_feature_layer = vision_feature_layer
+        self.vision_aspect_ratio = vision_aspect_ratio
 
         if vision_config is None:
             raise ValueError("vision_config is required for MagmaConfig.")
-        
-        if projector_config is None:
-            raise ValueError("projector_config is required for MagmaConfig.")
         
         if text_config is None:
             raise ValueError("text_config is required for MagmaConfig.")
         
         # Vision config
-        self.vision_config = MagmaVisionConfig.from_exp_config(vision_config)
+        # self.vision_config = MagmaVisionConfig.from_exp_config(vision_config)
+        if isinstance(vision_config, dict):
+            vision_config["model_type"] = (
+                vision_config["model_type"] if "model_type" in vision_config else "clip_vision_model"
+            )
+            import pdb;pdb.set_trace()
+            vision_config = CONFIG_MAPPING[vision_config["model_type"]](**vision_config)
+        elif vision_config is None:
+            vision_config = CONFIG_MAPPING["siglip_vision_model"](
+                hidden_size=1152,
+                intermediate_size=4304,
+                patch_size=14,
+                image_size=384,
+                num_hidden_layers=26,
+                num_attention_heads=14,
+                vision_use_head=False,
+            )
+        self.vision_config = vision_config
 
         # LM config
-        self.text_config = AutoConfig.from_pretrained(
-            text_config['lm_name_or_path'],
-        )
+        # self.text_config = AutoConfig.from_pretrained(
+        #     text_config['text_name_or_path'],
+        # )
+        if isinstance(text_config, dict):
+            text_config["model_type"] = text_config["model_type"] if "model_type" in text_config else "qwen2"
+            text_config = CONFIG_MAPPING[text_config["model_type"]](**text_config)
+        elif text_config is None:
+            text_config = CONFIG_MAPPING["qwen2"]()
 
-        # Projector config
-        self.projector_config = MagmaVisualProjectorConfig.from_exp_config(
-            projector_config,
-            vision_hidden_size=self.vision_config.hidden_size,
-            lm_hidden_size=self.text_config.hidden_size,
-        )
+        self.text_config = text_config
+
+        super().__init__(tie_word_embeddings=tie_word_embeddings, **kwargs)
 
     @property
     def num_visual_tokens(self):

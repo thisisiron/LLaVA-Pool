@@ -4,7 +4,14 @@ import importlib
 from omegaconf import OmegaConf
 
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForVision2Seq, AutoProcessor, AutoTokenizer
+from transformers import (
+    AutoConfig, 
+    AutoModel,
+    AutoModelForCausalLM, 
+    AutoModelForVision2Seq, 
+    AutoProcessor, 
+    AutoTokenizer
+)
 from trl import AutoModelForCausalLMWithValueHead
 
 from ..pool import (
@@ -65,7 +72,7 @@ def load_tokenizer_and_processor(model_args: "ModelArguments") -> "TokenizerModu
     Note: including inplace operation of model_args.
     """
     init_kwargs = _get_init_kwargs(model_args)
-    config = load_auto_config(model_args)
+    config = load_auto_config(model_args.model_name_or_path, model_args)
     try:
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
@@ -119,7 +126,7 @@ def load_tokenizer_and_processor(model_args: "ModelArguments") -> "TokenizerModu
 
 def load_tokenizer(model_args: "ModelArguments") -> "PreTrainedTokenizer":
     init_kwargs = _get_init_kwargs(model_args)
-    config = load_local_config(model_args)
+    config = load_auto_config(model_args.text_name_or_path, model_args)
     
     try:
         tokenizer = AutoTokenizer.from_pretrained(
@@ -176,47 +183,48 @@ def model_class_from_name(model_name: str):
     return getattr(module, class_name)
 
 
-def load_processor(model_args: "ModelArguments", tokenizer: "PreTrainedTokenizer") -> "ProcessorMixin":
-    init_kwargs = _get_init_kwargs(model_args)
-    config = load_local_config(model_args)
-    processor_class = processor_class_from_name(config.name_or_path)
-    
-    try:
-        image_processor = AutoProcessor.from_pretrained(config.vision_config.vision_name_or_path, **init_kwargs)
-        image_processor = getattr(image_processor, 'image_processor', image_processor)
-        processor = processor_class(image_processor, tokenizer)
-        patch_processor(processor, config, tokenizer, model_args)
-    except Exception as e:
-        logger.warning("Processor was not found: {}.".format(e))
-        processor = None
+def build_processor(model_args: "ModelArguments", tokenizer: "PreTrainedTokenizer") -> "ProcessorMixin":
+    r"""
+    Build custom processor.
+    """
+    config = merge_configs(model_args)
+
+    image_processor = image_processor_class_from_name(config.model_type)()
+    processor = processor_class_from_name(config.model_type)(image_processor, tokenizer)
+    patch_processor(processor, config, tokenizer, model_args)
 
     # Avoid load tokenizer, see:
     # https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/auto/processing_auto.py#L324
     if processor is not None and "Processor" not in processor.__class__.__name__:
-        processor = None
+        raise ValueError("Processor load failed.")
+    
     return processor
 
 
 def load_config(model_args: "ModelArguments", stage="sft") -> "PretrainedConfig":
     if stage == "sft":
-        return load_auto_config(model_args)
+        return load_auto_config(model_args.model_name_or_path, model_args)
 
 
-def load_local_config(model_args: "ModelArguments") -> "PretrainedConfig":
-    if model_args.yaml_path is not None:
-        yaml_path = model_args.yaml_path
+def merge_configs(model_args: "ModelArguments", vision_config=None, text_config=None) -> "PretrainedConfig":
+    config_class = config_class_from_name(model_args.model_name_or_path)
 
-    local_config = OmegaConf.load(yaml_path)
-    config_dict = OmegaConf.to_container(local_config, resolve=True)
-    config_dict["name_or_path"] = local_config.model_name_or_path
-    config_class = config_class_from_name(local_config.model_name_or_path)
+    if vision_config is None:
+        vision_config = load_auto_config(model_args.vision_name_or_path, model_args)
 
-    return config_class(**config_dict)
+    # import pdb;pdb.set_trace()
+    # if vision_config.model_type == "clip":
+    #     vision_config = vision_config.vision_config
+    
+    if text_config is None:
+        text_config = load_auto_config(model_args.text_name_or_path, model_args)
+    
+    return config_class(vision_config=vision_config.to_dict(), text_config=text_config.to_dict())
 
     
-def load_auto_config(model_args: "ModelArguments") -> "PretrainedConfig":
+def load_auto_config(model_name_or_path: str, model_args: "ModelArguments") -> "PretrainedConfig":
     init_kwargs = _get_init_kwargs(model_args)
-    return AutoConfig.from_pretrained(model_args.model_name_or_path, **init_kwargs)
+    return AutoConfig.from_pretrained(model_name_or_path, **init_kwargs)
 
 
 def load_model(
@@ -229,6 +237,8 @@ def load_model(
 ) -> "PreTrainedModel":
     if stage == "sft":
         return load_auto_model(tokenizer, model_args, finetuning_args, is_trainable, add_valuehead)
+    elif stage == "pret":
+        return build_model(tokenizer, model_args, finetuning_args, is_trainable, add_valuehead)
 
 
 def load_auto_model(
@@ -331,7 +341,9 @@ def build_model(
     add_valuehead: bool = False,
 ) -> "PreTrainedModel":
     init_kwargs = _get_init_kwargs(model_args)
-    config = load_local_config(model_args)
+    text_config = load_auto_config(model_args)
+    vision_config = load_auto_config(model_args)
+    config = merge_configs(model_args, vision_config=vision_config, text_config=text_config)
     patch_config(config, tokenizer, model_args, init_kwargs, is_trainable)
     apply_liger_kernel(config, model_args, is_trainable, require_logits=(finetuning_args.stage not in ["pt", "sft"]))
 
@@ -339,10 +351,11 @@ def build_model(
     lazy_load = False
 
     if model is None and not lazy_load:
-        # init_kwargs["config"] = config
-        # init_kwargs["pretrained_model_name_or_path"] = config.model_name_or_path
-        model_class = model_class_from_name(config.model_name_or_path)
-        model = model_class(config, init_kwargs, dtype=model_args.compute_dtype)
+        # TODO: vision_model and text_model should be loaded separately
+        vision_model = AutoModel.from_pretrained(model_args.vision_name_or_path, config=config.vision_config)
+        language_model = AutoModelForCausalLM.from_pretrained(model_args.text_name_or_path, config=config.text_config)
+        model_class = model_class_from_name(config.model_type)
+        model = model_class(config, vision_model, language_model)
 
     if not lazy_load:
         patch_model(model, tokenizer, model_args, is_trainable, add_valuehead)

@@ -11,6 +11,7 @@ from .configuration_magma import MagmaConfig
 from .visual_encoders import build_encoder
 from .utils import check_local_file
 from .utils import unwrap_peft
+from ...utils.logging import get_logger
 
 from .projectors import (
     CAbstractor,
@@ -18,7 +19,7 @@ from .projectors import (
     MLPProjector,
 )
 
-# logger = utils.get_logger()
+logger = get_logger()
 
 
 def apply_delta(base_model, delta_model_name_or_path):
@@ -117,61 +118,36 @@ class MagmaPreTrainedModel(PreTrainedModel):
             module.weight.data.fill_(1.0)
         elif isinstance(module, nn.Parameter):
             raise ValueError()
-        
 
-class MagmaForConditionalGeneration(MagmaPreTrainedModel):
-    config_class = MagmaConfig
-    main_input_name = "pixel_values"
 
-    def build_projector(self, config: MagmaConfig, dtype):
+def build_projector(config: MagmaConfig):
         """Build projector (abstractor) and query_tokens (optionally for resampler)"""
-        proj_config = config.projector_config
-        proj_type = proj_config.projector_type
-        num_input_tokens = self.vision_model.get_num_tokens()
+        # proj_config = config.projector_config
+        proj_type = config.projector_type
+        num_input_tokens = config.vision_config.num_input_tokens
 
         abstractor = {
             "mlp": MLPProjector,
             "c-abs": CAbstractor,
             "d-abs": DAbstractor,
-        }[proj_type](proj_config, num_input_tokens=num_input_tokens)
+        }[proj_type](config, num_input_tokens=num_input_tokens)
 
         # deformable attention only supports fp32
-        if proj_type == "d-abs":
-            abstractor.to(torch.float)
-        else:
-            abstractor.to(dtype)
+        # if proj_type == "d-abs":
+        #     abstractor.to(torch.float)
+        # else:
+        #     abstractor.to(dtype)
 
         return abstractor
+      
 
-    def build_language_model(self, config: MagmaConfig, init_kwargs):
-        # lm_local_files_only, lm_file_name = check_local_file(
-        #     config.text_config.lm_name_or_path
-        # )
+class MagmaForConditionalGeneration(MagmaPreTrainedModel):
+    config_class = MagmaConfig
+    main_input_name = "pixel_values"
 
-        init_kwargs['config'] = config.text_config
-        init_kwargs["pretrained_model_name_or_path"] = config.text_config.name_or_path
-        try:
-            language_model = AutoModelForCausalLM.from_pretrained(
-                attn_implementation="flash_attention_2",
-                torch_dtype=torch.bfloat16,
-                **init_kwargs,
-            )
-        except Exception as e:
-            # logger.error(e)
-            # logger.info("Failed to load LM with flash_attention_2. Try without it ...")
-            language_model = AutoModelForCausalLM.from_pretrained(
-                **init_kwargs,
-            )
-
-        if getattr(config.text_config, "delta_model_name_or_path", None) is not None:
-            apply_delta(language_model, config.text_config.delta_model_name_or_path)
-
-        return language_model
-
-    def __init__(self, config: MagmaConfig, init_kwargs, dtype):
+    def __init__(self, config: MagmaConfig, vision_model, language_model):
         super().__init__(config)
-        # logger.info("Build vision model ...")
-        self.vision_model = build_encoder(config.vision_config, init_kwargs)
+        self.vision_model = vision_model
 
         # prevent re-init by HF trainer; is this a nice way?
         def _set_hf_initialized(module):
@@ -179,11 +155,12 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
         self.vision_model.apply(_set_hf_initialized)
 
         # logger.info("Build projector ...")
-        self.proj_type = config.projector_config.projector_type
-        self.abstractor = self.build_projector(config, dtype=dtype)
+        self.proj_type = config.projector_type
+        self.abstractor = build_projector(config)
 
         # logger.info("Build LM ...")
-        self.language_model = self.build_language_model(config, init_kwargs)
+        # self.language_model = self.build_language_model(config, init_kwargs)
+        self.language_model = language_model
         self.post_init()
 
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):

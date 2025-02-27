@@ -7,6 +7,7 @@ PROCESSOR_MAPPING_NAMES  = OrderedDict([
 ])
 
 IMAGE_PROCESSOR_MAPPING_NAMES = OrderedDict([
+    ('magma', 'MagmaImageProcessor'),
     ('internvl_chat', 'InternVLChatImageProcessor'),
 ])
 
