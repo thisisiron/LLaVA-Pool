@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
 from transformers.utils import logging
 from transformers.utils.versions import require_version
 from typing_extensions import override
-
+import re
 from .data_loader import Role
 
 
@@ -30,8 +30,6 @@ class Template:
     format_user: str
     format_assistant: str
     format_system: str
-    format_function: str
-    format_observation: str
     format_tools: str
     format_separator: str
     format_prefix: str
@@ -44,17 +42,33 @@ class Template:
     image_token: str
     video_token: str
 
+# def _replace_tokens(tokenizer, format_str: str, **kwargs) -> str:
+#     result = format_str
+
+#     for key, value in kwargs.items():
+#         result = result.replace("{{" + key + "}}", str(value))
+
+#     token_pattern = r'\{\{(\w+_token)\}\}'  # ex. bos_token, eos_token
+
+#     for match in re.finditer(token_pattern, result):
+#         token_name = match.group(1)
+        
+#         token_value = getattr(tokenizer, token_name, None)
+#         if token_value is None:
+#             raise ValueError(f"Token '{token_name}' not found in tokenizer.")
+#         result = result.replace("{{" + token_name + "}}", token_value)
+
+#     return result
+
 
 TEMPLATE: Dict[str, "Template"] = {}
 
 
 def _register_template(
     name: str,
-    format_user: Optional[str] = None,
-    format_assistant: Optional[str] = None,
+    format_user: Optional[str],
+    format_assistant: Optional[str],
     format_system: Optional[str] = None,
-    format_function: Optional[str] = None,
-    format_observation: Optional[str] = None,
     format_tools: Optional[str] = None,
     format_separator: Optional[str] = None,
     format_prefix: Optional[str] = None,
@@ -104,11 +118,7 @@ def _register_template(
         system_style=default_system_style,
         format_user=format_user,
         format_assistant=format_assistant,
-        # format_function=format_function or default_function_formatter,
-        format_function="",
-        # format_tools=format_tools or default_tool_formatter,
         format_tools="",
-        format_observation=format_observation or format_user,
         format_separator=format_separator or default_separator_formatter,
         stop_words=stop_words,
         efficient_eos=efficient_eos,
@@ -174,7 +184,6 @@ def _convert_str_to_jinja(template: str, tokenizer: "PreTrainedTokenizer", place
 
 def _get_jinja_template(template: "Template", tokenizer: "PreTrainedTokenizer") -> str:
     jinja_template = ""
-
     if template.format_prefix:
         prefix = _convert_str_to_jinja(template.format_prefix, tokenizer)
         if prefix:
@@ -236,13 +245,7 @@ def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: 
 
     if data_args.train_on_prompt and template.efficient_eos:
         raise ValueError("Current template template does not support `train_on_prompt`.")
-
-    # if data_args.tool_format is not None:
-    #     logger.info("Using tool format: {}.".format(data_args.tool_format))
-    #     eos_slots = [] if template.efficient_eos else [{"eos_token"}]
-    #     template.format_function = FunctionFormatter(slots=eos_slots, tool_format=data_args.tool_format)
-    #     template.format_tools = ToolFormatter(tool_format=data_args.tool_format)
-
+    
     stop_words = template.stop_words
     if template.replace_eos:
         if not stop_words:
@@ -252,6 +255,7 @@ def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: 
         stop_words = stop_words[1:]
 
     if tokenizer.eos_token_id is None:
+        import pdb;pdb.set_trace()
         _add_or_replace_eos_token(tokenizer, eos_token="<|endoftext|>")
 
     if tokenizer.pad_token_id is None:
@@ -266,7 +270,7 @@ def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: 
         if num_added_tokens > 0:
             logger.warning("New tokens have been added, make sure `resize_vocab` is True.")
 
-    if template.replace_jinja_template:
+    if tokenizer.chat_template is None or template.replace_jinja_template:
         try:
             tokenizer.chat_template = _get_jinja_template(template, tokenizer)
         except ValueError:
@@ -284,13 +288,6 @@ _register_template(
     image_token="<image>",
 )
 
-
-_register_template(
-    name="empty",
-    efficient_eos=True,
-)
-
-
 _register_template(
     name="llava_onevision",
     format_system="<|im_start|>system\n{{content}}<|im_end|>\n",
@@ -305,6 +302,19 @@ _register_template(
 
 
 _register_template(
+    name="llava_next",
+    default_system=(
+        "A chat between a curious user and an artificial intelligence assistant. "
+        "The assistant gives helpful, detailed, and polite answers to the user's questions."
+    ),
+    format_system="{{content}}",
+    format_user="USER: {{content}} ASSISTANT:",
+    format_assistant="{{content}}{{eos_token}}",
+    image_token="<image>",
+)
+
+
+_register_template(
     name="llama3.2_vision",
     format_prefix="<|begin_of_text|>",
     format_system="<|start_header_id|>system<|end_header_id|>\n\n{{content}}<|eot_id|>",
@@ -313,10 +323,6 @@ _register_template(
             "<|start_header_id|>assistant<|end_header_id|>\n\n"
     ),
     format_assistant="{{content}}<|eot_id|>",
-    format_observation=(
-        "<|start_header_id|>tool<|end_header_id|>\n\n{{content}}<|eot_id|>"
-        "<|start_header_id|>assistant<|end_header_id|>\n\n"
-    ),
     stop_words=["<|eot_id|>"],
     replace_eos=True,
     replace_jinja_template=False,
@@ -340,7 +346,6 @@ _register_template(
     format_system="<|im_start|>system\n{{content}}<|im_end|>\n",
     format_user="<|im_start|>user\n{{content}}<|im_end|>\n<|im_start|>assistant\n",
     format_assistant="{{content}}<|im_end|>",
-    format_observation="<|im_start|>tool\n{{content}}<|im_end|>\n<|im_start|>assistant\n",
     format_separator="\n",
     stop_words=["<|im_end|>"],
     replace_eos=True,
@@ -348,6 +353,7 @@ _register_template(
     image_token="<|image_pad|>",
     video_token="<|video_pad|>",
 )
+
 
 _register_template(
     name="internvl2_5",
@@ -360,6 +366,7 @@ _register_template(
     replace_eos=True,
     image_token="<IMG_CONTEXT>"
 )
+
 
 # _register_template(
 #     name="deepseekv2",

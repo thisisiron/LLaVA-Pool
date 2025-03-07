@@ -65,8 +65,8 @@ class BaseConverter:
         self.tokenizer = tokenizer
         self.expand_mm_tokens = True
 
-        self.image_token = template.image_token
-        self.video_token = template.video_token
+        self.image_token = tokenizer.image_token if hasattr(tokenizer, "image_token") else None
+        self.video_token = tokenizer.video_token if hasattr(tokenizer, "video_token") else None
 
     def _check_input(self, images, videos):
         if images is not None and len(images) >= 1 and self.image_token is None:
@@ -187,15 +187,9 @@ class BaseConverter:
             raise ValueError(f"The number of images does not match the number of {IMAGE_PLACEHOLDER} tokens.")
 
         return messages
-        
-    def extract_tool(self, content: str) -> Union[str, List[Tuple[str, str]]]:
-        r"""
-        Extracts tool message.
-        """
-        return self.format_tools.extract(content)
-
-    def _replace_tokens(self, template: str, **kwargs) -> str:
-        result = template
+    
+    def _replace_tokens(self, format_str: str, **kwargs) -> str:
+        result = format_str
 
         for key, value in kwargs.items():
             result = result.replace("{{" + key + "}}", str(value))
@@ -205,11 +199,13 @@ class BaseConverter:
         for match in re.finditer(token_pattern, result):
             token_name = match.group(1)
             
-            token_value = getattr(self.tokenizer, token_name, "")
+            token_value = getattr(self.tokenizer, token_name, None)
+            if token_value is None:
+                raise ValueError(f"Token '{token_name}' not found in tokenizer.")
             result = result.replace("{{" + token_name + "}}", token_value)
 
         return result
-
+    
     def _encode(
         self,
         messages: Sequence[Dict[str, str]],
@@ -226,13 +222,11 @@ class BaseConverter:
 
         for i, message in enumerate(messages):
             current_message = ""
-            
             if i == 0:
                 current_message += self.template.format_prefix
-                if system or tools:
-                    tool_text = self._replace_tokens(self.template.format_tools, content=tools) if tools else ""
+                if system:
                     if self.template.system_style == "standard":
-                        current_message += self._replace_tokens(self.template.format_system, content=(system + tool_text))
+                        current_message += self._replace_tokens(self.template.format_system, content=(system))
 
             if i > 0 and i % 2 == 0:
                 current_message += self.template.format_separator
@@ -246,16 +240,6 @@ class BaseConverter:
             elif message["role"] == Role.ASSISTANT:
                 current_message += self._replace_tokens(
                     self.template.format_assistant,
-                    content=message["content"]
-                )
-            elif message["role"] == Role.OBSERVATION:
-                current_message += self._replace_tokens(
-                    self.template.format_observation,
-                    content=message["content"]
-                )
-            elif message["role"] == Role.FUNCTION:
-                current_message += self._replace_tokens(
-                    self.template.format_function,
                     content=message["content"]
                 )
             else:
@@ -385,27 +369,28 @@ class LlavaNextConverter(BaseConverter):
         messages = deepcopy(messages)
         visual_inputs = self.get_visual_inputs(images, videos)
 
-        if "image_sizes" in visual_inputs:
-            image_sizes = iter(visual_inputs["image_sizes"])
-
         if "pixel_values" in visual_inputs:
+            image_sizes = iter(visual_inputs["image_sizes"].tolist())
             height, width = get_image_size(to_numpy_array(visual_inputs["pixel_values"][0][0]))
 
         for message in messages:
             content = message["content"]
-            while self.image_token in content:
-                image_size = next(image_sizes)
-                orig_height, orig_width = image_size[0].item(), image_size[1].item()
-                image_seqlen = self.processor._get_number_of_features(orig_height, orig_width, height, width)
-                if self.processor.vision_feature_select_strategy == "default":
-                    image_seqlen -= 1
+            while IMAGE_PLACEHOLDER in content:
+                if self.expand_mm_tokens:
+                    orig_height, orig_width = next(image_sizes)
+                    image_seqlen = self.processor._get_number_of_features(orig_height, orig_width, height, width)
+                    if getattr(self.processor, "vision_feature_select_strategy", "default") == "default":
+                        image_seqlen -= 1
+                else:
+                    image_seqlen = 1
+
+                content = content.replace(IMAGE_PLACEHOLDER, "<placeholder>" * image_seqlen, 1)
                 num_image_tokens += 1
-                content = content.replace(self.image_token, "{{image}}" * image_seqlen, 1)
 
-            message["content"] = content.replace("{{image}}", self.image_token)
-
+            message["content"] = content.replace("<placeholder>", self.image_token)
+            
         if len(images) != num_image_tokens:
-            raise ValueError("The number of images does not match the number of {} tokens".format(IMAGE_PLACEHOLDER))
+            raise ValueError(f"The number of images does not match the number of {IMAGE_PLACEHOLDER} tokens")
         return messages
 
 
@@ -462,7 +447,6 @@ class MllamaConverter(BaseConverter):
 
 
 class PixtralConverter(BaseConverter):
-
     @override
     def process_media_tokens(
         self,
@@ -545,7 +529,7 @@ class InternVLChatConverter(BaseConverter):
         num_image_tokens = 0  # count of image tokens
         messages = deepcopy(messages)
 
-        num_image_token = getattr(self.processor, "num_image_token")  # number of image tokens per image
+        image_seq_length = getattr(self.processor, "num_image_token")  # number of image tokens per image
 
         # Calculate number of image tokens needed
         visual_inputs = self.get_visual_inputs(images, videos)
@@ -560,7 +544,7 @@ class InternVLChatConverter(BaseConverter):
                 # Replace placeholder with image tokens
                 content = content.replace(
                     IMAGE_PLACEHOLDER,
-                    f"<img>{self.image_token * num_patches * num_image_token}</img>",
+                    f"<img>{self.image_token * num_patches * image_seq_length}</img>",
                     1,
                 )
                 num_image_tokens += 1
