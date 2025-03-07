@@ -4,7 +4,7 @@ from .model_loader import (
     load_tokenizer_and_processor,
     build_model, 
     load_tokenizer, 
-    load_processor
+    build_processor
 )
 from .model_utils.misc import find_all_linear_modules
 from .model_utils.quantization import QuantizationMethod
@@ -17,7 +17,7 @@ __all__ = [
     "load_model",
     "build_model",
     "load_tokenizer",
-    "load_processor",
+    "build_processor",
     "load_tokenizer_and_processor",
     "find_all_linear_modules",
     "load_valuehead_params",

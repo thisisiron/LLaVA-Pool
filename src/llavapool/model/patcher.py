@@ -124,6 +124,11 @@ def patch_config(
     if getattr(config, "model_type", None) == "qwen2" and is_trainable and model_args.flash_attn == "fa2":
         setattr(config, "use_cache", False)  # qwen2 does not support use_cache when using flash attn
 
+    if hasattr(config, "image_token_index") and model_args.image_token is not None:
+        setattr(config, "image_token_index", tokenizer.image_token_id)
+    if hasattr(config, "video_token_index") and model_args.video_token is not None:
+        setattr(config, "video_token_index", tokenizer.video_token_id)
+
     architectures = getattr(config, "architectures", []) or []
     if "LlavaLlamaForCausalLM" in architectures:
         raise ValueError("Please download llava models with hf-compatible format: https://huggingface.co/llava-hf")
@@ -143,11 +148,6 @@ def patch_config(
 
             if init_kwargs.get("device_map", None) == "auto":
                 init_kwargs["offload_folder"] = model_args.offload_folder
-    print(is_deepspeed_zero3_enabled())
-    print(is_fsdp_enabled())
-    print(model_args.compute_dtype)
-    print(init_kwargs)
-    print(config)
 
 
 def patch_model(

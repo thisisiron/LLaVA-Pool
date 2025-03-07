@@ -203,9 +203,22 @@ class ModelArguments(QuantizationArguments, ProcessorArguments, ExportArguments,
         default=False,
         metadata={"help": "Whether or not the special tokens should be split during the tokenization process."},
     )
+    image_token: Optional[str] = field(
+        default=None,
+        metadata={"help": "The image token to be used in the tokenizer."},
+    )
+    video_token: Optional[str] = field(
+        default=None,
+        metadata={"help": "The video token to be used in the tokenizer."},
+    )
     new_special_tokens: Optional[str] = field(
         default=None,
-        metadata={"help": "Special tokens to be added into the tokenizer. Use commas to separate multiple tokens."},
+        metadata={
+            "help": (
+                "Special tokens to be added into the tokenizer. Use commas to separate multiple tokens. "
+                "Exclude image tokens and video tokens, and write additional tokens."
+            )
+        },
     )
     model_revision: str = field(
         default="main",

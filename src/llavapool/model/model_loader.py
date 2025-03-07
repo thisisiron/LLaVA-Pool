@@ -10,7 +10,8 @@ from transformers import (
     AutoModelForCausalLM, 
     AutoModelForVision2Seq, 
     AutoProcessor, 
-    AutoTokenizer
+    AutoTokenizer,
+    CLIPVisionModel
 )
 from trl import AutoModelForCausalLMWithValueHead
 
@@ -130,7 +131,7 @@ def load_tokenizer(model_args: "ModelArguments") -> "PreTrainedTokenizer":
     
     try:
         tokenizer = AutoTokenizer.from_pretrained(
-            config.text_config.name_or_path,
+            config.name_or_path,
             use_fast=model_args.use_fast_tokenizer,
             split_special_tokens=model_args.split_special_tokens,
             padding_side="right",
@@ -138,7 +139,7 @@ def load_tokenizer(model_args: "ModelArguments") -> "PreTrainedTokenizer":
         )
     except ValueError:  # try the fast one
         tokenizer = AutoTokenizer.from_pretrained(
-            config.text_config.name_or_path,
+            config.name_or_path,
             use_fast=True,
             padding_side="right",
             **init_kwargs,
@@ -147,15 +148,36 @@ def load_tokenizer(model_args: "ModelArguments") -> "PreTrainedTokenizer":
         raise OSError("Failed to load tokenizer.") from e
 
     if model_args.new_special_tokens is not None:
+
+        if model_args.image_token is not None:
+            model_args.new_special_tokens = [model_args.image_token] + model_args.new_special_tokens
+        
+        if model_args.video_token is not None:
+            model_args.new_special_tokens = [model_args.video_token] + model_args.new_special_tokens
+
         num_added_tokens = tokenizer.add_special_tokens(
             dict(additional_special_tokens=model_args.new_special_tokens),
             replace_additional_special_tokens=False,
         )
+
+        _set_token_attributes(tokenizer, model_args)
+
         logger.info("Add {} to special tokens.".format(",".join(model_args.new_special_tokens)))
         if num_added_tokens > 0 and not model_args.resize_vocab:
             model_args.resize_vocab = True
             logger.warning("New tokens have been added, changed `resize_vocab` to True.")
     return tokenizer
+
+
+def _set_token_attributes(tokenizer, model_args):
+    """Set image/video token attributes to tokenizer."""
+    if model_args.image_token is not None:
+        setattr(tokenizer, "image_token", model_args.image_token)
+        setattr(tokenizer, "image_token_id", tokenizer.convert_tokens_to_ids(model_args.image_token))
+    
+    if model_args.video_token is not None:
+        setattr(tokenizer, "video_token", model_args.video_token)
+        setattr(tokenizer, "video_token_id", tokenizer.convert_tokens_to_ids(model_args.video_token))
 
 
 def image_processor_class_from_name(model_name: str):
@@ -212,9 +234,8 @@ def merge_configs(model_args: "ModelArguments", vision_config=None, text_config=
     if vision_config is None:
         vision_config = load_auto_config(model_args.vision_name_or_path, model_args)
 
-    # import pdb;pdb.set_trace()
-    # if vision_config.model_type == "clip":
-    #     vision_config = vision_config.vision_config
+    if vision_config.model_type == "clip":
+        vision_config = vision_config.vision_config
     
     if text_config is None:
         text_config = load_auto_config(model_args.text_name_or_path, model_args)
@@ -259,7 +280,6 @@ def load_auto_model(
             lazy_load = True
         elif is_trainable:
             model = load_unsloth_pretrained_model(config, model_args)
-
     if model is None and not lazy_load:
         init_kwargs["config"] = config
         init_kwargs["pretrained_model_name_or_path"] = model_args.model_name_or_path
@@ -341,18 +361,21 @@ def build_model(
     add_valuehead: bool = False,
 ) -> "PreTrainedModel":
     init_kwargs = _get_init_kwargs(model_args)
-    text_config = load_auto_config(model_args)
-    vision_config = load_auto_config(model_args)
+    text_config = load_auto_config(model_args.text_name_or_path, model_args)
+    vision_config = load_auto_config(model_args.vision_name_or_path, model_args)
     config = merge_configs(model_args, vision_config=vision_config, text_config=text_config)
     patch_config(config, tokenizer, model_args, init_kwargs, is_trainable)
     apply_liger_kernel(config, model_args, is_trainable, require_logits=(finetuning_args.stage not in ["pt", "sft"]))
 
     model = None
     lazy_load = False
-
+    
     if model is None and not lazy_load:
-        # TODO: vision_model and text_model should be loaded separately
-        vision_model = AutoModel.from_pretrained(model_args.vision_name_or_path, config=config.vision_config)
+        if "clip" in config.vision_config.model_type:
+            config.vision_feature_select_strategy = "default"
+            vision_model = CLIPVisionModel.from_pretrained(model_args.vision_name_or_path, config=config.vision_config)
+        else:
+            vision_model = AutoModel.from_pretrained(model_args.vision_name_or_path, config=config.vision_config)
         language_model = AutoModelForCausalLM.from_pretrained(model_args.text_name_or_path, config=config.text_config)
         model_class = model_class_from_name(config.model_type)
         model = model_class(config, vision_model, language_model)
@@ -392,6 +415,6 @@ def build_model(
             )
     print(model.language_model.dtype)
     print(model.vision_model.dtype)
-    print(next(model.abstractor.parameters()).dtype)
+    print(next(model.multi_modal_projector.parameters()).dtype)
     print('end')
     return model

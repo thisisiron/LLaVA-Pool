@@ -4,7 +4,7 @@ from ...data import SFTDataCollatorWith4DAttentionMask, load_dataset_module, loa
 from ...utils.constants import IGNORE_INDEX
 from ...utils.misc import get_logits_processor
 from ...utils.ploting import plot_loss
-from ...model import build_model, load_tokenizer, load_processor
+from ...model import build_model, load_tokenizer, build_processor
 from ..trainer_utils import create_modelcard_and_push
 from .metric import ComputeAccuracy, ComputeSimilarity, eval_logit_processor
 from .trainer import CustomSeq2SeqTrainer
@@ -26,7 +26,7 @@ def run_pret(
 ):
 
     tokenizer = load_tokenizer(model_args)
-    processor = load_processor(model_args, tokenizer)
+    processor = build_processor(model_args, tokenizer)
     converter = load_converter(processor, tokenizer, data_args)
     dataset_module = load_dataset_module(
         converter=converter,
