@@ -118,7 +118,7 @@ class MLPProjector(Projector):
         output_hidden_size = self.config.output_hidden_size
         depth = self.config.depth
 
-        self.net = build_mlp(depth, encoder_hidden_size, output_hidden_size)
+        self.net = build_mlp(depth, vision_hidden_size, output_hidden_size)
 
     def _forward(self, x):
         return self.net(x)

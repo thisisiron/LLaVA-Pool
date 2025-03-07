@@ -1,11 +1,17 @@
-from typing import Optional
+import math
+from dataclasses import dataclass
+from typing import Optional, Union, List, Tuple
 
+import numpy as np
 import torch
 from torch import nn
 import torch.utils.checkpoint
 from tqdm import tqdm
 from transformers.models.auto import AutoModelForCausalLM
 from transformers.modeling_utils import PreTrainedModel
+from transformers.modeling_outputs import ModelOutput
+from transformers.image_processing_utils import select_best_resolution
+from transformers.utils import is_torchdynamo_compiling
 
 from .configuration_magma import MagmaConfig
 from .visual_encoders import build_encoder
@@ -17,6 +23,7 @@ from .projectors import (
     CAbstractor,
     DAbstractor,
     MLPProjector,
+    LlavaMultiModalProjector
 )
 
 logger = get_logger()
@@ -53,6 +60,113 @@ def get_media_indices(my_list):
         elif my_list[i] != my_list[i - 1] and my_list[i] < 0:
             result.append(i)
     return result
+
+
+def get_anyres_image_grid_shape(image_size, grid_pinpoints, patch_size):
+    """
+    Calculate the shape of the image patch grid after the preprocessing for images of any resolution.
+
+    Args:
+        image_size (`tuple`):
+            The size of the input image in the format (width, height).
+        grid_pinpoints (`List`):
+            A list containing possible resolutions. Each item in the list should be a tuple or list
+            of the form `(height, width)`.
+        patch_size (`int`):
+            The size of each image patch.
+
+    Returns:
+        tuple: The shape of the image patch grid in the format (width, height).
+    """
+    if not isinstance(grid_pinpoints, list):
+        raise TypeError("grid_pinpoints should be a list of tuples or lists")
+
+    # ! VERY IMPORTANT if image_size is tensor, must convert to into tuple, otherwise it will cause wrong calculate
+    if not isinstance(image_size, (list, tuple)):
+        if not isinstance(image_size, (torch.Tensor, np.ndarray)):
+            raise TypeError(
+                f"image_size invalid type: {type(image_size)} not valid, should be either list, tuple, np.ndarray or tensor"
+            )
+        image_size = image_size.tolist()
+
+    height, width = select_best_resolution(image_size, grid_pinpoints)
+    return height // patch_size, width // patch_size
+
+
+def unpad_image(tensor, original_size):
+    """
+    Unpads a PyTorch tensor of a padded and resized image.
+
+    Args:
+        tensor (`torch.Tensor`):
+            The image tensor, assumed to be of shape (num_channels, height, width).
+        original_size (`tuple`):
+            The original size of the image (height, width).
+
+    Returns:
+        `torch.Tensor`: The unpadded image tensor.
+    """
+    if not isinstance(original_size, (list, tuple)):
+        if not isinstance(original_size, (torch.Tensor, np.ndarray)):
+            raise TypeError(
+                f"image_size invalid type: {type(original_size)} not valid, should be either list, tuple, np.ndarray or tensor"
+            )
+        original_size = original_size.tolist()
+    original_height, original_width = original_size
+    current_height, current_width = tensor.shape[1:]
+
+    original_aspect_ratio = original_width / original_height
+    current_aspect_ratio = current_width / current_height
+
+    if original_aspect_ratio > current_aspect_ratio:
+        scale_factor = current_width / original_width
+        new_height = int(round(original_height * scale_factor, 7))
+        padding = (current_height - new_height) // 2
+        unpadded_tensor = tensor[:, padding : current_height - padding, :]
+    else:
+        scale_factor = current_height / original_height
+        new_width = int(round(original_width * scale_factor, 7))
+        padding = (current_width - new_width) // 2
+        unpadded_tensor = tensor[:, :, padding : current_width - padding]
+
+    return unpadded_tensor
+
+
+def image_size_to_num_patches(image_size, grid_pinpoints, patch_size: int):
+    """
+    Calculate the number of patches after the preprocessing for images of any resolution.
+
+    Args:
+        image_size (`torch.LongTensor` or `np.ndarray` or `Tuple[int, int]`):
+            The size of the input image in the format (height, width). ?
+        grid_pinpoints (`List`):
+            A list containing possible resolutions. Each item in the list should be a tuple or list
+            of the form `(height, width)`.
+        patch_size (`int`):
+            The size of each image patch.
+
+    Returns:
+        int: the number of patches
+    """
+    if not isinstance(grid_pinpoints, list):
+        raise TypeError("grid_pinpoints should be a list of tuples or lists")
+
+    # ! VERY IMPORTANT if image_size is tensor, must convert to into tuple, otherwise it will cause wrong calculate
+    if not isinstance(image_size, (list, tuple)):
+        if not isinstance(image_size, (torch.Tensor, np.ndarray)):
+            raise TypeError(f"image_size invalid type {type(image_size)} with value {image_size}")
+        image_size = image_size.tolist()
+
+    best_resolution = select_best_resolution(image_size, grid_pinpoints)
+    height, width = best_resolution
+    num_patches = 0
+    # consider change to ceil(height/patch_size)*ceil(width/patch_size) + 1
+    for i in range(0, height, patch_size):
+        for j in range(0, width, patch_size):
+            num_patches += 1
+    # add the base patch
+    num_patches += 1
+    return num_patches
 
 
 class QuickGELU(nn.Module):
@@ -124,13 +238,13 @@ def build_projector(config: MagmaConfig):
         """Build projector (abstractor) and query_tokens (optionally for resampler)"""
         # proj_config = config.projector_config
         proj_type = config.projector_type
-        num_input_tokens = config.vision_config.num_input_tokens
 
-        abstractor = {
-            "mlp": MLPProjector,
+        multi_modal_projector = {
+            "mlp": LlavaMultiModalProjector,
             "c-abs": CAbstractor,
             "d-abs": DAbstractor,
-        }[proj_type](config, num_input_tokens=num_input_tokens)
+            # ""
+        }[proj_type](config)
 
         # deformable attention only supports fp32
         # if proj_type == "d-abs":
@@ -138,8 +252,50 @@ def build_projector(config: MagmaConfig):
         # else:
         #     abstractor.to(dtype)
 
-        return abstractor
+        return multi_modal_projector
       
+
+
+
+@dataclass
+class MagmaCausalLMOutputWithPast(ModelOutput):
+    """
+    Base class for causal language model (or autoregressive) outputs.
+
+    Args:
+        loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided):
+            Language modeling loss (for next-token prediction).
+        logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+        past_key_values (`tuple(tuple(torch.FloatTensor))`, *optional*, returned when `use_cache=True` is passed or when `config.use_cache=True`):
+            Tuple of `tuple(torch.FloatTensor)` of length `config.n_layers`, with each tuple having 2 tensors of shape
+            `(batch_size, num_heads, sequence_length, embed_size_per_head)`)
+
+            Contains pre-computed hidden-states (key and values in the self-attention blocks) that can be used (see
+            `past_key_values` input) to speed up sequential decoding.
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings, if the model has an embedding layer, +
+            one for the output of each layer) of shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the optional initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+        image_hidden_states (`torch.FloatTensor`, *optional*):
+            A `torch.FloatTensor` of size (batch_size * num_patches, num_images, sequence_length, hidden_size)`.
+            image_hidden_states of the model produced by the vision encoder and after projecting the last hidden state.
+    """
+
+    loss: Optional[torch.FloatTensor] = None
+    logits: torch.FloatTensor = None
+    past_key_values: Optional[List[torch.FloatTensor]] = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+    image_hidden_states: Optional[torch.FloatTensor] = None
+
 
 class MagmaForConditionalGeneration(MagmaPreTrainedModel):
     config_class = MagmaConfig
@@ -156,7 +312,10 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
 
         # logger.info("Build projector ...")
         self.proj_type = config.projector_type
-        self.abstractor = build_projector(config)
+        self.multi_modal_projector = build_projector(config)
+
+        embed_std = 1 / math.sqrt(config.text_config.hidden_size)
+        self.image_newline = nn.Parameter(torch.randn(config.text_config.hidden_size, dtype=self.dtype) * embed_std)
 
         # logger.info("Build LM ...")
         # self.language_model = self.build_language_model(config, init_kwargs)
@@ -164,12 +323,12 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
         self.post_init()
 
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
-        for module in [self.vision_model, self.abstractor, self.language_model]:
+        for module in [self.vision_model, self.multi_modal_projector, self.language_model]:
             if hasattr(module, "gradient_checkpointing_enable"):
                 module.gradient_checkpointing_enable(gradient_checkpointing_kwargs)
 
     def gradient_checkpointing_disable(self):
-        for module in [self.vision_model, self.abstractor, self.language_model]:
+        for module in [self.vision_model, self.multi_modal_projector, self.language_model]:
             if hasattr(module, "gradient_checkpointing_disable"):
                 module.gradient_checkpointing_disable()
 
@@ -191,14 +350,14 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
         # Forward projector
         # =================================================== #
         if self.proj_type == "resampler":
-            visual_embeds = self.abstractor(
+            visual_embeds = self.multi_modal_projector(
                 encoder_hidden_states=visual_features,
                 output_attentions=True,
             )
             info_anal = visual_embeds["attentions"]
             visual_embeds = visual_embeds["last_hidden_state"]
         elif self.proj_type == "d-abs":
-            visual_embeds = self.abstractor(
+            visual_embeds = self.multi_modal_projector(
                 visual_features, output_attentions=True, output_sampling_locations=True
             )
 
@@ -212,13 +371,6 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
 
         # visual_embeds: [B, L, dim]
         return visual_embeds, info_anal
-
-    def _get_visual_feature_at(self, v_output, layer_index):
-        if type(layer_index) == list:  # multi-scale feature case
-            visual_features = torch.stack(v_output, dim=1)[:, layer_index]  # [B, n_scales, L, dim]
-        else:
-            visual_features = v_output[layer_index]  # [B, L, dim]
-        return visual_features
     
     def get_input_embeddings(self):
         return self.language_model.get_input_embeddings()
@@ -247,204 +399,280 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
         self.config.text_config.vocab_size = model_embeds.num_embeddings
         self.vocab_size = model_embeds.num_embeddings
         return model_embeds
+    
+    def pack_image_features(self, image_features, image_sizes, vision_feature_select_strategy, image_newline=None):
+        """
+        Reshape, unpad and then pack each image_feature into a single image_features tensor containing all visual vectors.
 
-    def forward_vision(self, pixel_values):
-        v_outputs = self.vision_model(pixel_values, return_dict=True, output_hidden_states=True)
-        layer_index = self.config.projector_config.feature_layer_index
-        visual_features = self._get_visual_feature_at(v_outputs.hidden_states, layer_index)
-        visual_features = self.vision_model.postprocess_for_projector(visual_features)
-        return visual_features
+        Args:
+            image_features (`List[torch.Tensor]` of length num_images, each of shape `(num_patches, image_length, embed_dim)`)
+                List of image feature tensor, each contains all the visual feature of all patches.
+            image_sizes (`torch.Tensor` of shape `(num_images, 2)`)
+                Actual image size of each images (H, W).
+            vision_feature_select_strategy (`str`)
+                The feature selection strategy used to select the vision feature from the vision backbone.
+            image_newline (`torch.Tensor` of shape `(embed_dim)`)
+                New line embedding vector.
+        Returns:
+            image_features (`torch.Tensor` of shape `(all_feat_len, embed_dim)`)
+            feature_lens (`List[int]`)
+                token length of each image in image_features
+        """
+        new_image_features = []
+        feature_lens = []
+        for image_idx, image_feature in enumerate(image_features):
+            if image_feature.shape[0] > 1:
+                base_image_feature = image_feature[0]
+                image_feature = image_feature[1:]
+                height = width = self.config.vision_config.image_size // self.config.vision_config.patch_size
 
-    def forward_projector(self, visual_features):
-        visual_embeds = self.abstractor(visual_features)["last_hidden_state"]
+                num_patch_height, num_patch_width = get_anyres_image_grid_shape(
+                    image_sizes[image_idx],
+                    self.config.image_grid_pinpoints,
+                    self.config.vision_config.image_size,
+                )
 
-        return visual_embeds
+                if (
+                    np.prod(image_feature.shape) % (num_patch_height * num_patch_width * height * width) != 0
+                    and vision_feature_select_strategy == "default"
+                ):
+                    logger.warning_once(
+                        "Image feature shape does not line up with the provided patch size. "
+                        "You may be using the `default` vision_feature_select_strategy with a"
+                        " visual encoder that does not have CLS."
+                    )
 
-    def forward_and_project_vision(self, pixel_values):
+                image_feature = image_feature.view(num_patch_height, num_patch_width, height, width, -1)
+                image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
+                image_feature = image_feature.flatten(1, 2).flatten(2, 3)
+                image_feature = unpad_image(image_feature, image_sizes[image_idx])
+
+                if image_newline is not None:
+                    image_feature = torch.cat(
+                        (
+                            image_feature,
+                            image_newline[:, None, None]
+                            .expand(*image_feature.shape[:-1], 1)
+                            .to(image_feature.device, image_feature.dtype),
+                        ),
+                        dim=-1,
+                    )
+                image_feature = image_feature.flatten(1, 2).transpose(0, 1)
+                image_feature = torch.cat((base_image_feature, image_feature), dim=0)
+            else:
+                image_feature = image_feature[0]
+                if image_newline is not None:
+                    image_feature = torch.cat((image_feature, image_newline[None].to(image_feature)), dim=0)
+            new_image_features.append(image_feature)
+            feature_lens.append(image_feature.size(0))
+        image_features = torch.cat(new_image_features, dim=0)
+        feature_lens = torch.tensor(feature_lens, dtype=torch.long, device=image_features.device)
+        return image_features, feature_lens
+
+    def forward_vision(self, pixel_values, vision_feature_layer, vision_feature_select_strategy):
+        image_features = self.vision_model(pixel_values, output_hidden_states=True)
+
+        if isinstance(vision_feature_layer, int):
+            selected_image_feature = image_features.hidden_states[vision_feature_layer]
+        else:
+            hs_pool = [image_features.hidden_states[layer_idx] for layer_idx in vision_feature_layer]
+            selected_image_feature = torch.cat(hs_pool, dim=-1)
+
+        if vision_feature_select_strategy == "default":
+            selected_image_feature = selected_image_feature[:, 1:]
+        elif vision_feature_select_strategy == "full":
+            selected_image_feature = selected_image_feature
+
+        # visual_features = self.vision_model.postprocess_for_projector(visual_features)
+        return selected_image_feature
+
+    def forward_projector(self, selected_image_feature, image_num_patches):
+        image_features = self.multi_modal_projector(selected_image_feature)
+        image_features = torch.split(image_features, image_num_patches, dim=0)
+        return image_features
+
+    def get_image_features(
+        self, 
+        pixel_values: torch.FloatTensor,
+        image_sizes: torch.LongTensor,
+        vision_feature_layer: Union[int, List[int]],
+        vision_feature_select_strategy: str,
+    ):
         """Forward pixel_values & project (abstract) the visual features to LLM embedding space."""
-        assert pixel_values is not None
-        visual_features = self.forward_vision(pixel_values)
-        visual_embeds = self.forward_projector(visual_features)
+        assert pixel_values is not None, "pixel_values cannot be None"
+
+        image_num_patches = [
+            image_size_to_num_patches(
+                image_size=imsize,
+                grid_pinpoints=self.config.image_grid_pinpoints,
+                patch_size=self.config.vision_config.image_size,
+            )
+            for imsize in image_sizes
+        ]
+        if pixel_values.dim() == 5:
+            # stacked if input is (batch_size, num_patches, num_channels, height, width)
+            _pixel_values_list = [pix_val[:num_patch] for pix_val, num_patch in zip(pixel_values, image_num_patches)]
+            pixel_values = torch.cat(_pixel_values_list, dim=0)
+        elif pixel_values.dim() != 4:
+            # otherwise has to be stacked from list of (num_patches, num_channels, height, width)
+            raise ValueError(f"pixel_values of shape {pixel_values.shape}, expect to be of 4 or 5 dimensions")
+
+        selected_image_feature = self.forward_vision(pixel_values, vision_feature_layer, vision_feature_select_strategy)
+        image_features = self.forward_projector(selected_image_feature, image_num_patches)
 
         # visual_embeds: [B, L, dim]
-        return visual_embeds
-
-    def embed_text_tokens(self, input_ids, inplace=False):
-        """Embed input_ids into text_embeds, ignoring media tokens (negative values).
-        """
-        if not inplace:
-            input_ids = input_ids.clone()
-        input_ids[input_ids < 0] = 0
-
-        text_embeds = self.language_model.get_input_embeddings()(input_ids)
-        if hasattr(self.language_model, "transformer") and hasattr(
-            self.language_model.transformer, "word_embeddings_layernorm"
-        ):
-            text_embeds = self.language_model.transformer.word_embeddings_layernorm(text_embeds)
-
-        return text_embeds
-
-    def prepare_mm_inputs(
-        self,
-        input_ids: torch.FloatTensor,
-        pixel_values: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-    ):
-        """Prepare multimodal inputs from input_ids and pixel_values.
-        """
-        if pixel_values is not None:
-            pixel_values = pixel_values.to(self._get_input_dtype())
-
-        if attention_mask is None:
-            attention_mask = input_ids.new_ones(*input_ids.shape)
-
-        # Get Text Embeddings
-        text_embeds = self.embed_text_tokens(input_ids)
-
-        # Get Visual Embeddings
-        if pixel_values is not None:
-            visual_embeds = self.forward_and_project_vision(pixel_values)  # [B, L, lm_dim]
-            img_seq_length = visual_embeds.shape[1]  # visual token length for single image
-        else:
-            img_seq_length = 0
-
-        # get media token starting indices
-        media_token_indices = [get_media_indices(ids) for ids in input_ids]
-        num_images_per_sample = [len(x) for x in media_token_indices]
-
-        # sanity check (assume all media tokens are image tokens)
-        n_vision_tokens = (input_ids == -1).sum(1)  # -1 is image token
-        num_images = torch.as_tensor(num_images_per_sample, device=n_vision_tokens.device)
-        assert (
-            (n_vision_tokens == num_images * img_seq_length).all().item()
-        ), f"Expected #img_tokens={n_vision_tokens}, but got {num_images * img_seq_length}"
-
-        # Get Actual Multimodal Input Embeddings
-        batch_size = input_ids.shape[0]
-        input_chunk_embeds = []
-        input_chunk_attns = []
-        img_idx = 0
-        for b in range(batch_size):
-            start = 0
-            embeds = []
-            attns = []
-
-            for i, pos in enumerate(media_token_indices[b]):
-                if pos > start:
-                    embeds.append(text_embeds[b, start:pos])  # add tokens before visual tokens
-                    attns.append(attention_mask[b, start:pos])
-                embeds.append(visual_embeds[img_idx + i])  # add visual tokens
-                img_embed_attn_mask = torch.ones(
-                    visual_embeds[img_idx + i].shape[0], device=visual_embeds.device
-                )
-                attns.append(img_embed_attn_mask)
-                start = pos + img_seq_length
-
-            if start < text_embeds.shape[1]:
-                embeds.append(text_embeds[b, start:])  # add instruction & response
-                attns.append(attention_mask[b, start:])
-
-            img_idx += num_images_per_sample[b]
-            input_chunk_embeds.append(torch.cat(embeds, dim=0))
-            input_chunk_attns.append(torch.cat(attns, dim=0))
-
-        input_embeds = torch.stack(input_chunk_embeds, dim=0)
-        attention_mask = torch.stack(input_chunk_attns, dim=0)
-
-        return {
-            "input_embeds": input_embeds,
-            "attention_mask": attention_mask,
-        }
+        return image_features
 
     def forward(
         self,
         pixel_values: torch.FloatTensor,
         input_ids: torch.FloatTensor,
-        # num_images: torch.LongTensor,
-        seq_length: Optional[torch.LongTensor] = None,
+        image_sizes: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[torch.FloatTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        vision_feature_layer: Optional[Union[int, List[int]]] = None,
+        vision_feature_select_strategy: Optional[str] = None,
         labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
+        # seq_length: Optional[torch.LongTensor] = None,
+        **lm_kwargs,
     ):
+        
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        inputs = self.prepare_mm_inputs(
-            input_ids,
-            pixel_values,
-            attention_mask,
+        vision_feature_layer = (
+            vision_feature_layer if vision_feature_layer is not None else self.config.vision_feature_layer
         )
-        input_embeds = inputs["input_embeds"]
 
-        # Forward into LM
-        # loss is computed in forwarding LM
+        vision_feature_select_strategy = (
+            vision_feature_select_strategy
+            if vision_feature_select_strategy is not None
+            else self.config.vision_feature_select_strategy
+        )
+
+        if (input_ids is None) ^ (inputs_embeds is not None):
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+
+        if pixel_values is not None and inputs_embeds is not None:
+            raise ValueError(
+                "You cannot specify both pixel_values and inputs_embeds at the same time, and must specify either one"
+            )
+
+        if inputs_embeds is None:
+            inputs_embeds = self.get_input_embeddings()(input_ids)
+
+        if pixel_values is not None and pixel_values.size(0) > 0:
+            image_features = self.get_image_features(
+                pixel_values,
+                image_sizes,
+                vision_feature_layer=vision_feature_layer,
+                vision_feature_select_strategy=vision_feature_select_strategy,
+            )
+
+            # NOTE we only support multimodal_patch_merge_type == "spatial_unpad"
+            image_features, feature_lens = self.pack_image_features(
+                image_features,
+                image_sizes,
+                vision_feature_select_strategy=vision_feature_select_strategy,
+                image_newline=self.image_newline,
+            )
+            
+            special_image_mask = (input_ids == self.config.image_token_index).unsqueeze(-1)
+            special_image_mask = special_image_mask.expand_as(inputs_embeds).to(inputs_embeds.device)
+            if not is_torchdynamo_compiling() and inputs_embeds[special_image_mask].numel() != image_features.numel():
+                n_image_tokens = (input_ids == self.config.image_token_index).sum()
+                n_image_features = image_features.shape[0]
+                raise ValueError(
+                    f"Image features and image tokens do not match: tokens: {n_image_tokens}, features {n_image_features}"
+                )
+            image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
+            inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
+
         outputs = self.language_model(
-            inputs_embeds=input_embeds,
             attention_mask=attention_mask,
-            labels=labels,
-            return_dict=return_dict,
-            output_attentions=self.config.output_attentions,
-        )
-
-        return outputs
-
-    @torch.no_grad()
-    def generate(
-        self,
-        pixel_values: torch.FloatTensor = None,
-        input_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        seq_length: Optional[torch.LongTensor] = None,
-        **generate_kwargs,
-    ) -> torch.LongTensor:
-        """
-        Overrides `generate` function to be able to use the model as a conditional generator.
-
-        Args:
-            pixel_values (`torch.FloatTensor` of shape (batch_size, num_channels, height, width)):
-                Input images to be processed.
-            input_ids (`torch.LongTensor` of shape (batch_size, sequence_length), *optional*):
-                The sequence used as a prompt for the generation.
-            attention_mask (`torch.LongTensor` of shape (batch_size, sequence_length), *optional*):
-                Mask to avoid performing attention on padding token indices
-
-        Returns:
-            captions (list): A list of strings of length batch_size * num_captions.
-        """
-        if input_ids is None:
-            return self.language_model.generate(attention_mask=attention_mask, **generate_kwargs)
-
-        inputs = self.prepare_mm_inputs(
-            input_ids,
-            pixel_values,
-            attention_mask,
-        )
-        inputs_embeds = inputs["input_embeds"]
-        attention_mask = inputs["attention_mask"]
-
-        outputs = self.language_model.generate(
+            position_ids=position_ids,
+            past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            **generate_kwargs,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            cache_position=cache_position,
+            logits_to_keep=logits_to_keep,
+            **lm_kwargs,
         )
 
-        return outputs
+        logits = outputs[0]
+        
+        loss = None
+        if labels is not None:
+            # Shift so that tokens < n predict n
+            if attention_mask is not None:
+                # we use the input attention mask to shift the logits and labels, because it is 2D.
+                # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
+                shift_attention_mask = attention_mask[:, -(logits.shape[1] - 1) :].to(logits.device)
+                shift_logits = logits[..., :-1, :][shift_attention_mask.to(logits.device) != 0].contiguous()
+                shift_labels = labels[..., 1:][shift_attention_mask.to(labels.device) != 0].contiguous()
+            else:
+                shift_logits = logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(
+                shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1).to(shift_logits.device)
+            )
+
+        if not return_dict:
+            output = (logits,) + outputs[1:]
+            return (loss,) + output if loss is not None else output
+
+        return MagmaCausalLMOutputWithPast(
+            loss=loss,
+            logits=logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+            image_hidden_states=image_features if pixel_values is not None else None,
+        )
 
     def prepare_inputs_for_generation(
         self,
         input_ids,
+        past_key_values=None,
+        inputs_embeds=None,
         pixel_values=None,
+        image_sizes=None,
         attention_mask=None,
-        **model_kwargs,
+        cache_position=None,
+        logits_to_keep=None,
+        **kwargs,
     ):
-        # if model is used as a decoder in encoder-decoder model,
-        # the decoder attention mask is created on the fly
-        if attention_mask is None:
-            input_shape = input_ids.shape
-            attention_mask = input_ids.new_ones(input_shape)
+        # Overwritten -- in specific circumstances we don't want to forward image inputs to the model
 
-        return {
-            "input_ids": input_ids,
-            "pixel_values": pixel_values,
-            "attention_mask": attention_mask,
-            "is_decoder": True,
-        }
+        model_inputs = self.language_model.prepare_inputs_for_generation(
+            input_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            cache_position=cache_position,
+            logits_to_keep=logits_to_keep,
+            **kwargs,
+        )
+
+        # If we're in cached decoding stage, pixel values should be None because input ids do not contain special image token anymore
+        # Otherwise we need pixel values to be passed to model
+        if cache_position[0] == 0:
+            model_inputs["pixel_values"] = pixel_values
+            model_inputs["image_sizes"] = image_sizes
+
+        return model_inputs

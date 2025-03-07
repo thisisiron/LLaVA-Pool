@@ -106,20 +106,19 @@ class MagmaConfig(PretrainedConfig):
         self,
         vision_config: dict = None,
         text_config: dict = None,
-        image_token_index=151646,
-        video_token_index=151647,
+        image_token_index=151655,
         projector_type="mlp",
         projector_hidden_act="gelu",
         vision_feature_select_strategy="full",
         vision_feature_layer=-1,
         vision_aspect_ratio="anyres_max_9",
         tie_word_embeddings=False,
+        image_grid_pinpoints=None,
         multimodal_projector_bias=True,
         **kwargs,
     ):
         
         self.image_token_index = image_token_index
-        self.video_token_index = video_token_index
 
         self.projector_type = projector_type
         self.projector_hidden_act = projector_hidden_act
@@ -130,6 +129,13 @@ class MagmaConfig(PretrainedConfig):
                 "vision_feature_select_strategy should be one of 'default', 'full'."
                 f"Got: {vision_feature_select_strategy}"
             )
+        
+        image_grid_pinpoints = (
+            image_grid_pinpoints
+            if image_grid_pinpoints is not None
+            else [[336, 672], [672, 336], [672, 672], [1008, 336], [336, 1008]]
+        )
+        self.image_grid_pinpoints = image_grid_pinpoints
 
         self.vision_feature_select_strategy = vision_feature_select_strategy
         self.vision_feature_layer = vision_feature_layer
@@ -147,7 +153,6 @@ class MagmaConfig(PretrainedConfig):
             vision_config["model_type"] = (
                 vision_config["model_type"] if "model_type" in vision_config else "clip_vision_model"
             )
-            import pdb;pdb.set_trace()
             vision_config = CONFIG_MAPPING[vision_config["model_type"]](**vision_config)
         elif vision_config is None:
             vision_config = CONFIG_MAPPING["siglip_vision_model"](
