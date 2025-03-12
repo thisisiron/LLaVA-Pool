@@ -93,15 +93,25 @@ def load_tokenizer_and_processor(model_args: "ModelArguments") -> "TokenizerModu
         raise OSError("Failed to load tokenizer.") from e
 
     if model_args.new_special_tokens is not None:
+
+        if model_args.image_token is not None:
+            model_args.new_special_tokens = [model_args.image_token] + model_args.new_special_tokens
+        
+        if model_args.video_token is not None:
+            model_args.new_special_tokens = [model_args.video_token] + model_args.new_special_tokens
+
         num_added_tokens = tokenizer.add_special_tokens(
             dict(additional_special_tokens=model_args.new_special_tokens),
             replace_additional_special_tokens=False,
         )
+
+        _set_token_attributes(tokenizer, model_args)
+
         logger.info("Add {} to special tokens.".format(",".join(model_args.new_special_tokens)))
         if num_added_tokens > 0 and not model_args.resize_vocab:
             model_args.resize_vocab = True
             logger.warning("New tokens have been added, changed `resize_vocab` to True.")
-
+            
     patch_tokenizer(tokenizer)
 
     try:

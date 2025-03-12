@@ -65,8 +65,11 @@ class BaseConverter:
         self.tokenizer = tokenizer
         self.expand_mm_tokens = True
 
-        self.image_token = tokenizer.image_token if hasattr(tokenizer, "image_token") else None
-        self.video_token = tokenizer.video_token if hasattr(tokenizer, "video_token") else None
+        self.image_token = tokenizer.image_token
+        self.video_token = tokenizer.video_token
+
+        if self.image_token is None and self.video_token is None:
+            raise ValueError("At least one token (image or video) must be provided")
 
     def _check_input(self, images, videos):
         if images is not None and len(images) >= 1 and self.image_token is None:
@@ -323,6 +326,7 @@ class Qwen2vlConverter(BaseConverter):
         video_grid_thw = visual_inputs.get("video_grid_thw", [])
         num_image_tokens, num_video_tokens = 0, 0
         messages = deepcopy(messages)
+        
         for message in messages:
             content = message["content"]
             while IMAGE_PLACEHOLDER in content:

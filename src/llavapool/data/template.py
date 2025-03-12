@@ -237,7 +237,7 @@ def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: 
         require_version("accelerate>=0.34.0", "To fix: pip install accelerate>=0.34.0")
 
     if data_args.template is None:
-        template = TEMPLATE["empty"]  # placeholder
+        raise ValueError("Template is not specified.")
     else:
         template = TEMPLATE.get(data_args.template, None)
         if template is None:
@@ -246,6 +246,15 @@ def get_template_and_fix_tokenizer(tokenizer: "PreTrainedTokenizer", data_args: 
     if data_args.train_on_prompt and template.efficient_eos:
         raise ValueError("Current template template does not support `train_on_prompt`.")
     
+    # Set image and video tokens
+    if not hasattr(tokenizer, "image_token") and template.image_token:
+        setattr(tokenizer, "image_token", template.image_token)
+        setattr(tokenizer, "image_token_id", tokenizer.convert_tokens_to_ids(template.image_token))
+    
+    if not hasattr(tokenizer, "video_token") and template.video_token:
+        setattr(tokenizer, "video_token", template.video_token)
+        setattr(tokenizer, "video_token_id", tokenizer.convert_tokens_to_ids(template.video_token))
+
     stop_words = template.stop_words
     if template.replace_eos:
         if not stop_words:
