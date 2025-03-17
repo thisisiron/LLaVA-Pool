@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 import os
 from pathlib import Path
+import json
 
 from llavapool.data.data_loader import convert_sharegpt, load_dataset
 
@@ -47,14 +48,22 @@ class TestDataLoader:
         assert result["_videos"] is None
     
     def test_convert_sharegpt_with_image(self):
-        """Test for data conversion with image"""
-        # Prepare mock data
-        mock_image_data = {
+        """Test for data conversion with image using real image from demo_data"""
+        # Get the project root directory
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+        
+        # Load demo.json to get real image data
+        demo_json_path = os.path.join(project_root, "data", "demo.json")
+        with open(demo_json_path, 'r') as f:
+            demo_data = json.load(f)
+        
+        # Use the first example from demo.json
+        real_example = {
             "conversations": [
-                {"from": "human", "value": "<image>\nWhat is in this image?"},
-                {"from": "gpt", "value": "This is an image of the Eiffel Tower."}
+                {"from": "human", "value": "<image>이미지에 대해 설명해줘."},
+                {"from": "gpt", "value": "큰 빨간 공중 전화 박스 안에 한 남자가 서 있습니다."}
             ],
-            "images": ["path/to/image.jpg"]
+            "images": ["demo_data/COCO_train2014_000000222016.jpg"]
         }
         
         # Create mock DatasetConfig object
@@ -67,11 +76,11 @@ class TestDataLoader:
         mock_config.tags.user_tag = "human"
         mock_config.tags.assistant_tag = "gpt"
         
-        # Call the function
+        # Call the function with real data path
         result = convert_sharegpt(
-            example=mock_image_data,
+            example=real_example,
             dataset_config=mock_config,
-            data_args={"data_path": "/dummy/path"}
+            data_args={"dataset_dir": os.path.join(project_root, "data")}
         )
         
         # Verify the result
@@ -80,10 +89,10 @@ class TestDataLoader:
         assert "_images" in result
         assert isinstance(result["_images"], list)
         assert len(result["_images"]) == 1
-        assert result["_images"][0] == "path/to/image.jpg"
+        assert "COCO_train2014_000000222016.jpg" in result["_images"][0]
         assert "<image>" in result["_prompt"][0]
-        assert "What is in this image?" in result["_prompt"][0]
-        assert "This is an image of the Eiffel Tower." in result["_response"][0]
+        assert "이미지에 대해 설명해줘." in result["_prompt"][0]
+        assert "큰 빨간 공중 전화 박스 안에 한 남자가 서 있습니다." in result["_response"][0]
     
     def test_convert_sharegpt_multi_turn(self):
         """Test for multi-turn conversation conversion"""
