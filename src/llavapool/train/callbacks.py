@@ -123,13 +123,13 @@ class SaveProcessorCallback(TrainerCallback):
     @override
     def on_save(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
         if args.should_save:
-            output_dir = os.path.join(args.output_dir, "{}-{}".format(PREFIX_CHECKPOINT_DIR, state.global_step))
-            getattr(self.processor, "image_processor").save_pretrained(output_dir)
+            output_dir = os.path.join(args.output_dir, f"{PREFIX_CHECKPOINT_DIR}-{state.global_step}")
+            self.processor.save_pretrained(output_dir)
 
     @override
     def on_train_end(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
         if args.should_save:
-            getattr(self.processor, "image_processor").save_pretrained(args.output_dir)
+            self.processor.save_pretrained(args.output_dir)
 
 
 class PissaConvertCallback(TrainerCallback):
