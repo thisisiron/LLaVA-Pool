@@ -95,7 +95,7 @@ class TestCollator:
             ignore_index=-100
         )
         result = collator(features)
-        
+
         # Verify results
         assert "input_ids" in result
         assert "labels" in result
