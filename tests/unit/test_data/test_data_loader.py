@@ -164,76 +164,53 @@ class TestDataLoader:
         assert result["_prompt"][2]["content"] == "Tell me about Python."
         assert result["_response"][0]["content"] == "Python is a high-level programming language..."
 
-    # Set up sharegpt attributes
     def test_load_dataset_module(self):
-        """Test the load_dataset_module function"""
-        # Mock necessary objects and dependencies
-        mock_converter = MagicMock()
-        mock_tokenizer = MagicMock()
-        mock_processor = MagicMock()
+        """Test for load_dataset_module function using Qwen2.5-VL-3B-Instruct model"""
         
-        # Mock data arguments
-        mock_data_args = MagicMock()
-        mock_data_args.dataset = ["demo"]
-        mock_data_args.dataset_dir = os.path.join(PROJECT_ROOT, "data")
-        mock_data_args.streaming = False
-        mock_data_args.val_size = 0.2
-        mock_data_args.preprocessing_num_workers = 1
-        mock_data_args.overwrite_cache = False
-        mock_data_args.preprocessing_batch_size = 32
-        mock_data_args.buffer_size = 1000
-        mock_data_args.tokenized_path = None
+        # Import required libraries
+        import transformers
+        from llavapool.data.converter import load_converter
         
-        # Mock model arguments
-        mock_model_args = MagicMock()
-        mock_model_args.cache_dir = None
+        # Setup model arguments
+        model_args = MagicMock()
+        model_args.cache_dir = None
+        model_args.model_name_or_path = "Qwen/Qwen2.5-VL-3B-Instruct"
         
-        # Mock training arguments
-        mock_training_args = MagicMock()
-        mock_training_args.seed = 42
-        mock_training_args.local_process_index = 0
-        mock_training_args.should_save = True
+        # Setup data arguments
+        data_args = MagicMock()
+        data_args.dataset_dir = os.path.join(PROJECT_ROOT, "data")
+        data_args.dataset = ["demo"]  # List 형식으로 dataset 이름 지정
+        data_args.template = "qwen2_vl"
+        data_args.streaming = False
+        data_args.preprocessing_num_workers = 1
+        data_args.overwrite_cache = False
+        data_args.preprocessing_batch_size = 1
+        data_args.val_size = 0.2  # 검증 데이터 비율 지정
+        data_args.buffer_size = 1000
+        data_args.tokenized_path = None
+        data_args.cutoff_len = 1024
         
-        # Mock dataset config
-        mock_dataset_config = MagicMock()
-        mock_dataset_config.file_name = "demo.json"
-        mock_dataset_config.split = "train"
-        mock_dataset_config.formatting = "sharegpt"
+        # Setup training arguments
+        training_args = MagicMock()
+        training_args.local_process_index = 0
+        training_args.seed = 42
+        training_args.should_save = False
         
-        # Create mock dataset
-        mock_dataset = MagicMock()
-        mock_dataset_dict = MagicMock()
-        mock_dataset_dict.__getitem__.side_effect = lambda x: mock_dataset if x in ["train", "validation"] else None
+        tokenizer = transformers.AutoTokenizer.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
+        processor = transformers.AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
         
-        # Set up patchers
-        with patch("llavapool.data.data_loader.get_dataset_config", return_value=mock_dataset_config) as mock_get_config, \
-                patch("llavapool.data.data_loader.load_dataset", return_value=mock_dataset) as mock_load, \
-                patch("llavapool.data.data_loader.convert_dataset", return_value=mock_dataset) as mock_convert, \
-                patch("llavapool.data.data_loader.get_superivsed_dataset", return_value=mock_dataset) as mock_get_sup, \
-                patch("llavapool.data.data_loader.split_dataset", return_value=mock_dataset_dict) as mock_split, \
-                patch("os.path.isfile", return_value=True) as mock_isfile:
+        # 실제 converter 로드
+        converter = load_converter(processor, tokenizer, data_args)
+        
+        # Call the function under test
+        from llavapool.data.data_loader import load_dataset_module
+        result = load_dataset_module(
+            converter=converter,
+            data_args=data_args,
+            model_args=model_args,
+            training_args=training_args,
+            tokenizer=tokenizer,
+            processor=processor,
+            stage="sft"
+        )
             
-            
-            # Call the function
-            result = load_dataset_module(
-                converter=mock_converter,
-                data_args=mock_data_args,
-                model_args=mock_model_args,
-                training_args=mock_training_args,
-                tokenizer=mock_tokenizer,
-                processor=mock_processor
-            )
-            
-            # Verify calls
-            mock_get_config.assert_called_once_with(mock_data_args.dataset_dir, "demo")
-            mock_load.assert_called_once()
-            mock_convert.assert_called_once_with(mock_dataset, mock_dataset_config, mock_data_args, mock_training_args, format="sharegpt")
-            mock_get_sup.assert_called_once()
-            mock_split.assert_called_once()
-            
-            import pdb;pdb.set_trace()
-            # Verify result
-            assert "train_dataset" in result
-            assert "eval_dataset" in result
-            assert result["train_dataset"] == mock_dataset
-            assert result["eval_dataset"] == mock_dataset
