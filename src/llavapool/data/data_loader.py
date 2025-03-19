@@ -5,6 +5,7 @@ from typing import Dict, List, Literal, Optional, Tuple, Union, Any
 
 from datasets import DatasetDict, load_dataset
 from datasets import Dataset, IterableDataset
+from datasets import concatenate_datasets
 from transformers import logging
 from transformers import (
     PreTrainedTokenizer,
@@ -15,7 +16,7 @@ from transformers import (
 from .dataset_config import (
     get_dataset_config,
 )
-from .strategy import SupervisedStrategy
+from .strategy import SupervisedStrategy, PairwiseStrategy
 from .collator import SFTDataCollatorWith4DAttentionMask
 from ..utils.constants import IGNORE_INDEX
 
@@ -96,9 +97,30 @@ def convert_sharegpt(
                 "content": message[dataset_config.sharegpt.content_tag]
             }
         )
-    
-    prompt = valid_messages[:-1]
-    response = valid_messages[-1:]
+
+    # Processing preference data like dpo
+    if (
+        dataset_config.preference 
+        and isinstance(example[dataset_config.common.chosen], dict) 
+        and isinstance(example[dataset_config.common.rejected], dict)
+    ):
+        chosen = example[dataset_config.common.chosen]
+        rejected = example[dataset_config.common.rejected]
+        prompt = valid_messages
+        response = [
+           {
+                    "role": tag_to_role[chosen[dataset_config.sharegpt.role_tag]],
+                    "content": chosen[dataset_config.sharegpt.content_tag],
+                },
+                {
+                    "role": tag_to_role[rejected[dataset_config.sharegpt.role_tag]],
+                    "content": rejected[dataset_config.sharegpt.content_tag],
+                }
+        ]
+    else:
+        # Standard case
+        prompt = valid_messages[:-1]
+        response = valid_messages[-1:]
     
     images = None
     if dataset_config.common.images is not None:
@@ -160,18 +182,43 @@ def convert_dataset(
     return dataset
 
 
-def get_superivsed_dataset(
+def process_dataset_with_strategy(
     dataset,
     converter,
     tokenizer: "PreTrainedTokenizer",
     processor: "ProcessorMixin",
     data_args: "DataArguments",
     training_args: "TrainingArguments",
+    stage: str = "sft",
 ):
+    """
+    Process dataset with appropriate strategy based on training stage.
+    
+    Parameters:
+    - dataset: The input dataset
+    - converter: Template converter for formatting inputs
+    - tokenizer: Tokenizer for processing text
+    - processor: Processor for handling multimodal inputs
+    - data_args: Arguments for data processing
+    - training_args: Arguments for training
+    - stage: Training stage (sft, rm, dpo)
+    
+    Returns:
+    The processed dataset
+    """
     if dataset is None:
         return dataset
     
-    strategy = SupervisedStrategy()
+    # Select appropriate strategy based on stage
+    if stage == "sft":
+        strategy = SupervisedStrategy()
+    elif stage == "rm":
+        strategy = PairwiseStrategy()
+    elif stage == "dpo":
+        strategy = PairwiseStrategy()
+    else:
+        logger.warning(f"Unknown stage: {stage}, using SupervisedStrategy as default")
+        strategy = SupervisedStrategy()
     
     column_names = list(next(iter(dataset)).keys())
     kwargs = {}
@@ -181,7 +228,7 @@ def get_superivsed_dataset(
             load_from_cache_file=(not data_args.overwrite_cache) or (training_args.local_process_index != 0),
             desc="Running tokenizer on dataset",
         )
-    
+
     dataset = dataset.map(
         lambda x: strategy.preprocess(x, converter, tokenizer, processor, data_args),
         batched=True,
@@ -196,10 +243,18 @@ def get_superivsed_dataset(
 def split_dataset(
     dataset: Union["Dataset", "IterableDataset"], data_args: "DataArguments", seed: int
 ) -> "DatasetDict":
-    r"""
+    """
     Splits the dataset and returns a dataset dict containing train set and validation set.
 
     Supports both map dataset and iterable dataset.
+    
+    Parameters:
+    - dataset: The input dataset
+    - data_args: Arguments for data processing
+    - seed: Random seed for splitting
+    
+    Returns:
+    A DatasetDict containing train and validation sets
     """
     if data_args.streaming:
         dataset = dataset.shuffle(buffer_size=data_args.buffer_size, seed=seed)
@@ -212,7 +267,6 @@ def split_dataset(
         return DatasetDict({"train": dataset["train"], "validation": dataset["test"]})
 
 
-from datasets import concatenate_datasets
 def load_dataset_module(
     converter,
     data_args: "DataArguments",
@@ -257,38 +311,9 @@ def load_dataset_module(
     
     if len(datasets) > 1:
         dataset = concatenate_datasets(datasets)
-
-    # dataset_config = get_dataset_config(data_args.dataset_dir, data_args.dataset)
-
-    # logger.info(f"Loading dataset {data_args.dataset}...")
-    # data_path, data_name, data_dir = None, None, None
-    
-    # data_files = []
-    # data_path = os.path.join(data_args.dataset_dir, dataset_config.file_name)
-    # if os.path.isfile(data_path):  # is file
-    #     data_files.append(data_path)
-    #     file_format = data_path.split(".")[-1]
-    #     data_path = file_format
-    # else:
-    #     raise ValueError(f"File {data_path} not found.")
-    
-    # dataset = load_dataset(
-    #     path=data_path,
-    #     name=data_name,
-    #     data_dir=data_dir,
-    #     data_files=data_files,
-    #     split=dataset_config.split,
-    #     cache_dir=model_args.cache_dir,
-    #     # token=model_args.hf_hub_token,
-    #     streaming=data_args.streaming,
-    #     # trust_remote_code=True,
-    # )
-    # with training_args.main_process_first(desc="loading dataset..."):
-    #     dataset = convert_dataset(dataset, dataset_config, data_args, training_args, format=dataset_config.formatting)
-
     
     with training_args.main_process_first(desc="pre-processing dataset..."):
-        dataset = get_superivsed_dataset(dataset, converter, tokenizer, processor, data_args, training_args)
+        dataset = process_dataset_with_strategy(dataset, converter, tokenizer, processor, data_args, training_args, stage)
 
         if data_args.val_size > 1e-6:
             dataset_dict = split_dataset(dataset, data_args, seed=training_args.seed)
@@ -314,15 +339,12 @@ def load_dataset_module(
                 logger.info("Please restart the training with `tokenized_path: {}`.".format(data_args.tokenized_path))
             import sys
             sys.exit(0)
-
+        
         dataset_module = {}
         if "train" in dataset_dict:
             dataset_module["train_dataset"] = dataset_dict["train"]
 
         if "validation" in dataset_dict:
             dataset_module["eval_dataset"] = dataset_dict["validation"]
-
-        for data in dataset_dict['train']:
-            assert len(data['input_ids']) == len(data['labels']) == len(data['attention_mask'])
 
         return dataset_module
