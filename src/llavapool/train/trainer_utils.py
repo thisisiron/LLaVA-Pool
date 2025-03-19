@@ -1,22 +1,3 @@
-# Copyright 2024 HuggingFace Inc. and the LlamaFactory team.
-#
-# This code is inspired by the original GaLore's implementation: https://github.com/jiaweizzhao/GaLore
-# and the original LoRA+'s implementation: https://github.com/nikhil-ghosh-berkeley/loraplus
-# and the original BAdam's implementation: https://github.com/Ledzy/BAdam
-# and the HuggingFace's TRL library: https://github.com/huggingface/trl
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -457,3 +438,24 @@ def get_batch_logps(
     labels[labels == label_pad_token_id] = 0  # dummy token
     per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
     return (per_token_logps * loss_mask).sum(-1), loss_mask.sum(-1)
+
+
+def nested_detach(tensors, clone: bool = False):
+    """
+    Detach nested tensors.
+    
+    Args:
+        tensors: Nested tensors to detach.
+        clone: Whether to clone the tensors.
+    
+    Returns:
+        Detached nested tensors.
+    """
+    if isinstance(tensors, (list, tuple)):
+        return type(tensors)(nested_detach(t, clone) for t in tensors)
+    elif isinstance(tensors, dict):
+        return {k: nested_detach(v, clone) for k, v in tensors.items()}
+    elif isinstance(tensors, torch.Tensor):
+        return tensors.detach().clone() if clone else tensors.detach()
+    else:
+        return tensors

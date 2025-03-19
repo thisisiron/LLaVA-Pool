@@ -14,7 +14,7 @@ _default_log_level: "logging._Level" = logging.INFO
 
 
 _formatter = logging.Formatter(
-    fmt="%(asctime)s | llavapool | %(levelname)-5s | %(filename)s:%(lineno)d:%(funcName)-30s :: %(message)s",
+    fmt="%(asctime)s | llavapool | %(levelname)-5s | %(filename)s:%(lineno)d:%(funcName)s >>  %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
