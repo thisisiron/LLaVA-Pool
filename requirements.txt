@@ -16,5 +16,6 @@ liger_kernel
 datasets>=2.16.0
 tokenizers>=0.19.0,<0.20.4
 gradio>=4.0.0,<5.0.0
+sentence-transformers==3.1.1
 omegaconf
 matplotlib
