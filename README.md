@@ -16,7 +16,7 @@ LLaVA-Pool is a powerful and flexible framework designed for training and fine-t
 ## ✨ Key Features
 
 - **Multiple Model Support**: Compatible with leading VLMs including Qwen2-VL, Qwen2.5-VL, LLama 3.2 Vision, Pixtral, and InternVL2.5
-- **Flexible Training Methods**: Support for both pre-training and supervised fine-tuning (SFT)
+- **Flexible Training Methods**: Support for pre-training, supervised fine-tuning (SFT), and direct preference optimization (DPO)
 - **Efficient Data Processing**: Streamlined data loading and processing pipelines for multimodal datasets
 - **Distributed Training**: Built-in support for multi-GPU and multi-node training
 - **Customizable Configuration**: YAML-based configuration system for easy experiment management
@@ -83,6 +83,17 @@ For fine-tuning a pre-trained model on your specific task:
 export PYTHONPATH=src:$PYTHONPATH
 torchrun --nnodes 1 --nproc_per_node 4 --master_port 20001 src/llavapool/run.py examples/qwen2vl_full_sft.yaml
 ```
+
+### Direct Preference Optimization (DPO)
+
+To align your model with human preferences using DPO:
+
+```bash
+export PYTHONPATH=src:$PYTHONPATH
+torchrun --nnodes 1 --nproc_per_node 4 --master_port 20001 src/llavapool/run.py examples/qwen2vl_dpo.yaml
+```
+
+DPO fine-tuning requires a dataset of preferred and rejected responses for given prompts. This alignment technique helps improve the model's response quality by learning from human preferences.
 
 You can customize the training parameters by modifying the YAML configuration files in the `examples` directory.
 
