@@ -108,6 +108,40 @@ Multi-image data includes multiple images within a conversation. This format is 
 }
 ```
 
+### DPO Demo Data
+
+The `dpo_demo.json` file contains demonstration data for the DPO (Demonstration Preference Optimization) process. This data is used to fine-tune models by providing examples of preferred and non-preferred responses to user inputs. Each entry in the file includes:
+
+- `conversations`: An array of conversation messages between the user and the assistant.
+- `chosen`: The preferred response from the assistant.
+- `rejected`: The non-preferred response from the assistant.
+- `images`: The path to the image associated with the conversation.
+
+**Example:**
+```json
+[
+  {
+    "conversations": [
+      {
+        "from": "human",
+        "value": "<image> Describe the image."
+      }
+    ],
+    "chosen": {
+      "from": "gpt",
+      "value": "The image shows a red telephone booth with a man standing inside."
+    },
+    "rejected": {
+      "from": "gpt",
+      "value": "There is a picture."
+    },
+    "images": "demo_data/COCO_train2014_000000222016.jpg"
+  }
+]
+```
+
+This structure helps in training models to understand and generate more accurate and contextually appropriate responses by learning from the preferred examples.
+
 ## Dataset Configuration
 
 The `dataset_config.json` file defines the structure and format of datasets used in LLaVA-Pool. This configuration is crucial for properly loading and processing data.
