@@ -159,17 +159,17 @@ def get_forbidden_modules(config: "PretrainedConfig", finetuning_args: "Finetuni
     if model_type in COMPOSITE_MODELS:
         if finetuning_args.freeze_vision_tower:
             vision_model_keys = COMPOSITE_MODELS[model_type].vision_model_keys
-            logger.info(f"Set vision model not trainable: {vision_model_keys}.")
+            logger.info(f"\033[31mSet vision model not trainable: {vision_model_keys}.\033[0m")
             forbidden_modules.update(vision_model_keys)
 
         if finetuning_args.freeze_multi_modal_projector:
             projector_key = COMPOSITE_MODELS[model_type].projector_key
-            logger.info(f"Set multi model projector not trainable: {projector_key}.")
+            logger.info(f"\033[31mSet multi model projector not trainable: {projector_key}.\033[0m")
             forbidden_modules.add(projector_key)
-
-        if finetuning_args.train_mm_proj_only:
+        
+        if finetuning_args.freeze_language_model:
             language_model_keys = COMPOSITE_MODELS[model_type].language_model_keys
-            logger.info(f"Set language model not trainable: {language_model_keys}.")
+            logger.info(f"\033[31mSet language model not trainable: {language_model_keys}.\033[0m")
             forbidden_modules.update(language_model_keys)
 
     return forbidden_modules
