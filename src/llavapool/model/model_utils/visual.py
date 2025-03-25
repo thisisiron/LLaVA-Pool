@@ -216,24 +216,20 @@ def patch_target_modules(
     r"""
     Freezes vision tower for VLM LoRA tuning.
     """
-    model_type = getattr(config, "model_type", None)
-    vit_model_type = getattr(getattr(config, "vision_config", None), "model_type", None)
-    if finetuning_args.freeze_vision_tower:
-        if model_type in COMPOSITE_MODELS:
-            vision_model_keys = COMPOSITE_MODELS[model_type].vision_model_keys
-            logger.info(f"Set vision model not trainable: {vision_model_keys}.")
-            vision_model_keys = "|".join(vision_model_keys)
-            target_modules = "|".join(target_modules)
-            return f"^(?!.*{vision_model_keys}).*(?:{target_modules}).*"
-        else:
-            return target_modules
+    model_type = getattr(model.config, "model_type", None)
+    if model_type in COMPOSITE_MODELS:
+        forbidden_modules = get_forbidden_modules(model.config, finetuning_args)
+        forbidden_modules.update(COMPOSITE_MODELS[model_type].lora_conflict_keys)
+        module_names = []
+        for name, _ in model.named_modules():
+            if any(target_module in name for target_module in target_modules) and not any(
+                forbidden_module in name for forbidden_module in forbidden_modules
+            ):
+                module_names.append(name)
+
+        return module_names
     else:
-        if model_type == "qwen2_vl":  # avoid attaching lora to Conv3D layer
-            return "^(?!.*patch_embed).*(?:{}).*".format("|".join(target_modules))
-        elif vit_model_type == "pixtral":
-            return "^(?!.*patch_conv).*(?:{}).*".format("|".join(target_modules))
-        else:
-            return target_modules
+        return target_modules
 
 
 _register_composite_model(
