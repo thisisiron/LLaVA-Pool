@@ -1,7 +1,7 @@
 # LLaVA-Pool
 
 <p align="center">
-    <img src="assets/llavapool.png" width=200>
+    <img src="assets/llavapool_nobg.png" width=300>
 </p>
 
 <div align="center">
