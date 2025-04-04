@@ -6,18 +6,20 @@ stage: sft
 do_train: true
 finetuning_type: full
 freeze_vision_tower: false
-train_mm_proj_only: false
+# train_mm_proj_only: false
+freeze_multi_modal_projector: false
+freeze_language_model: false
 deepspeed: scripts/deepspeed/zero3.json
 
 ### dataset
-dataset: ocr-vqa-200k
+dataset: lotte_building, lotte_character, aihub_chart, aihub_math, aihub_ocr, arxivqa, docvqa, docreason25k
 template: qwen2_vl
 cutoff_len: 32768
 overwrite_cache: true
 preprocessing_num_workers: 80
 
 ### output
-output_dir: output/qwen2_5_vl-7b/full/test
+output_dir: output/qwen2_5_vl-7b/full/lotte_chart_table
 logging_steps: 100
 save_steps: 20000
 overwrite_output_dir: false
@@ -25,8 +27,8 @@ overwrite_output_dir: false
 ### train
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 8
-learning_rate: 1.0e-5
-num_train_epochs: 1
+learning_rate: 5.0e-6
+num_train_epochs: 3
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 bf16: true
