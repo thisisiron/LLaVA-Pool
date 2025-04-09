@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 119
+
+[tool.ruff.lint]
+# Activate basic rules similar to Flake8
+select = ["E", "F", "I"]
+# E501: Line length violations (ignored because auto-formatting handles it)
+# E203: Whitespace before colon (potential conflict with black)
+ignore = ["E501", "E203"]
+
+# Ignore import violations in all __init__.py files
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2
+known-first-party = ["llava"]
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+# Use spaces for indentation (not tabs)
+indent-style = "space"
+# Automatically detect line endings
+line-ending = "auto" 
