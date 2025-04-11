@@ -1,9 +1,11 @@
 from collections import defaultdict
-from typing import List, Dict, Optional, Any
+from typing import Any, Dict, List, Optional
 
-from .base import StrategyMixin, infer_seqlen
-from transformers import logging, PreTrainedTokenizer, ProcessorMixin
+from transformers import PreTrainedTokenizer, ProcessorMixin, logging
+
 from ...utils.constants import IGNORE_INDEX
+from .base import StrategyMixin, infer_seqlen
+
 
 logger = logging.get_logger(__name__)
 

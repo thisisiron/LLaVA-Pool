@@ -1,24 +1,19 @@
-from dataclasses import dataclass
-from collections import defaultdict
 import os
-from typing import Dict, List, Literal, Optional, Tuple, Union, Any
+from dataclasses import dataclass
+from typing import Literal, Union
 
-from datasets import DatasetDict, load_dataset
-from datasets import Dataset, IterableDataset
-from datasets import concatenate_datasets
-from transformers import logging
+from datasets import Dataset, DatasetDict, IterableDataset, concatenate_datasets, load_dataset
 from transformers import (
     PreTrainedTokenizer,
-    TrainingArguments,
     ProcessorMixin,
+    TrainingArguments,
+    logging,
 )
 
 from .dataset_config import (
     get_dataset_config,
 )
-from .strategy import SupervisedStrategy, PairwiseStrategy
-from .collator import SFTDataCollatorWith4DAttentionMask
-from ..utils.constants import IGNORE_INDEX
+from .strategy import PairwiseStrategy, SupervisedStrategy
 
 
 logger = logging.get_logger(__name__)

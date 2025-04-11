@@ -1,5 +1,6 @@
 from typing import Tuple
 
+
 class StrategyMixin:
     def __init__(sef):
         pass

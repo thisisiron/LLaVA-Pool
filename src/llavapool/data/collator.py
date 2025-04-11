@@ -1,34 +1,21 @@
-# Copyright 2024 OpenAccess AI Collective and the LlamaFactory team.
 #
 # This code is inspired by the OpenAccess AI Collective's axolotl library.
 # https://github.com/OpenAccess-AI-Collective/axolotl/blob/main/src/axolotl/monkeypatch/utils.py
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Sequence
 
-from PIL import Image
 import torch
 import torch.nn.functional as F
+from PIL import Image
 from transformers import DataCollatorForSeq2Seq
 
 from ..utils.constants import IGNORE_INDEX, IMAGE_PLACEHOLDER
 
+
 if TYPE_CHECKING:
     from transformers import ProcessorMixin
+
     from .converter import Converter
-    from .template import Conversation
 
 
 def prepare_4d_attention_mask(attention_mask_with_indices: "torch.Tensor", dtype: "torch.dtype") -> "torch.Tensor":

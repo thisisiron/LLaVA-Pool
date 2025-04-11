@@ -1,22 +1,23 @@
-import re
 import math
+import re
 from copy import deepcopy
-from typing import Optional, Tuple, List, Dict, Union, Sequence
-from typing_extensions import override
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
-from decord import VideoReader
-from PIL import Image
 import numpy as np
 import torch
+from decord import VideoReader
+from PIL import Image
 from transformers.image_utils import get_image_size, to_numpy_array
 from transformers.models.mllama.processing_mllama import (
     convert_sparse_cross_attention_mask_to_dense,
     get_cross_attention_token_mask,
 )
+from typing_extensions import override
 
 from ..utils.constants import IMAGE_PLACEHOLDER, VIDEO_PLACEHOLDER
-from .template import get_template_and_fix_tokenizer
 from .data_loader import Role
+from .template import get_template_and_fix_tokenizer
+
 
 Image.MAX_IMAGE_PIXELS = None
 
