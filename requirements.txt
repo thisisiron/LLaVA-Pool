@@ -4,9 +4,7 @@ huggingface-hub==0.23.2
 peft==0.11.1
 trl>=0.8.6
 pillow==10.2.0
-tokenizers==0.20.1
-tqdm==4.66.4
-transformers==4.46.1
+tqdm
 ujson==5.10.0
 urllib3==2.1.0
 decord==0.6.0
