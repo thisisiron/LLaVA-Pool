@@ -1,22 +1,8 @@
-# Copyright 2024 HuggingFace Inc. and the LlamaFactory team.
 #
 # This code is inspired by the HuggingFace's Transformers library.
 # https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava/modeling_llava.py
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Sequence, Set, Tuple, Union, Dict, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import torch
 import transformers.models
@@ -30,7 +16,6 @@ if TYPE_CHECKING:
     from transformers import LlavaConfig, PretrainedConfig, PreTrainedModel
 
     from ...hparams import FinetuningArguments, ModelArguments
-
 
 logger = get_logger(__name__)
 transformers_logger = logging.get_logger(__name__)
@@ -46,8 +31,8 @@ class CompositeModel:
     def get_projector(self, module: "torch.nn.Module") -> "torch.nn.Module":
         for key in self.projector_key.split("."):
             module = getattr(module, key)
-
         return module
+
 
 COMPOSITE_MODELS: Dict[str, "CompositeModel"] = {}
 
@@ -72,7 +57,6 @@ def _register_composite_model(
 class LlavaMultiModalProjectorForYiVL(torch.nn.Module):
     def __init__(self, config: "LlavaConfig") -> None:
         super().__init__()
-
         self.config = config
         if config is None:
             return
@@ -143,7 +127,7 @@ def configure_visual_model(config: "PretrainedConfig") -> None:
         # required for ds zero3 and valuehead models
         setattr(config, "hidden_size", getattr(config.text_config, "hidden_size", None))
     elif getattr(config, "llm_config", None) is not None:
-            setattr(config, "hidden_size", getattr(config.llm_config, "hidden_size", None))
+        setattr(config, "hidden_size", getattr(config.llm_config, "hidden_size", None))
 
     if getattr(config, "is_yi_vl_derived_model", None):
         logger.info("Detected Yi-VL model, applying projector patch.")
@@ -166,7 +150,7 @@ def get_forbidden_modules(config: "PretrainedConfig", finetuning_args: "Finetuni
             projector_key = COMPOSITE_MODELS[model_type].projector_key
             logger.info(f"\033[31mSet multi model projector not trainable: {projector_key}.\033[0m")
             forbidden_modules.add(projector_key)
-        
+
         if finetuning_args.freeze_language_model:
             language_model_keys = COMPOSITE_MODELS[model_type].language_model_keys
             logger.info(f"\033[31mSet language model not trainable: {language_model_keys}.\033[0m")
@@ -211,11 +195,9 @@ def get_vision_feature_select_strategy(config: "PretrainedConfig", processor: "P
 
 
 def patch_target_modules(
-    config: "PretrainedConfig", finetuning_args: "FinetuningArguments", target_modules: Sequence[str]
-) -> Union[str, List[str]]:
-    r"""
-    Freezes vision tower for VLM LoRA tuning.
-    """
+    model: "PreTrainedModel", finetuning_args: "FinetuningArguments", target_modules: list[str]
+) -> list[str]:
+    r"""Freeze vision tower for VLM LoRA tuning."""
     model_type = getattr(model.config, "model_type", None)
     if model_type in COMPOSITE_MODELS:
         forbidden_modules = get_forbidden_modules(model.config, finetuning_args)
