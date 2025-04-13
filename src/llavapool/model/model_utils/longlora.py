@@ -1,8 +1,3 @@
-#
-# This code is based on the EleutherAI's GPT-NeoX and the HuggingFace's Transformers libraries.
-# https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llama/modeling_llama.py
-# This code is also inspired by the original LongLoRA implementation.
-# https://github.com/dvlab-research/LongLoRA/blob/main/llama_attn_replace.py
 import math
 from typing import TYPE_CHECKING, Optional, Tuple
 

@@ -1,6 +1,3 @@
-#
-# This code is inspired by the HuggingFace's Transformers library.
-# https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava/modeling_llava.py
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 

@@ -1,9 +1,3 @@
-#
-# This code is inspired by the HuggingFace's Transformers and PEFT library,
-# https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/modeling_utils.py
-# https://github.com/huggingface/peft/blob/v0.10.0/src/peft/utils/other.py
-# and the Unsloth library.
-# https://github.com/unslothai/unsloth/blob/July-2024/unsloth/models/_utils.py
 import inspect
 from functools import partial, wraps
 from types import MethodType
