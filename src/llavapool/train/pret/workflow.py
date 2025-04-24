@@ -1,10 +1,10 @@
 from typing import TYPE_CHECKING, List, Optional
 
-from ...data import SFTDataCollatorWith4DAttentionMask, load_dataset_module, load_converter
+from ...data import SFTDataCollatorWith4DAttentionMask, load_converter, load_dataset_module
+from ...model import build_model, build_processor, load_tokenizer
 from ...utils.constants import IGNORE_INDEX
 from ...utils.misc import get_logits_processor
 from ...utils.ploting import plot_loss
-from ...model import build_model, load_tokenizer, build_processor
 from ..trainer_utils import create_modelcard_and_push
 from .metric import ComputeAccuracy, ComputeSimilarity, eval_logit_processor
 from .trainer import CustomSeq2SeqTrainer

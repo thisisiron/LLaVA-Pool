@@ -1,30 +1,23 @@
 import math
 from dataclasses import dataclass
-from typing import Optional, Union, List, Tuple
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from torch import nn
 import torch.utils.checkpoint
+from torch import nn
 from tqdm import tqdm
-from transformers.models.auto import AutoModelForCausalLM
-from transformers.modeling_utils import PreTrainedModel
-from transformers.modeling_outputs import ModelOutput
 from transformers.image_processing_utils import select_best_resolution
+from transformers.modeling_outputs import ModelOutput
+from transformers.modeling_utils import PreTrainedModel
+from transformers.models.auto import AutoModelForCausalLM
 from transformers.utils import is_torchdynamo_compiling
 
-from .configuration_magma import MagmaConfig
-from .visual_encoders import build_encoder
-from .utils import check_local_file
-from .utils import unwrap_peft
 from ...utils.logging import get_logger
+from .configuration_magma import MagmaConfig
+from .projectors import CAbstractor, DAbstractor, LlavaMultiModalProjector
+from .utils import check_local_file, unwrap_peft
 
-from .projectors import (
-    CAbstractor,
-    DAbstractor,
-    MLPProjector,
-    LlavaMultiModalProjector
-)
 
 logger = get_logger()
 

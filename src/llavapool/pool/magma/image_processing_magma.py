@@ -2,7 +2,6 @@ import math
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
-
 from transformers.image_processing_utils import BaseImageProcessor, BatchFeature, get_size_dict, select_best_resolution
 from transformers.image_transforms import (
     PaddingMode,

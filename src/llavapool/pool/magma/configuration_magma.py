@@ -1,10 +1,9 @@
 """Honeybee configuration"""
-import timm
 from transformers import AutoConfig, CLIPVisionConfig
 from transformers.configuration_utils import PretrainedConfig
+from transformers.models.auto import CONFIG_MAPPING
 from transformers.models.deformable_detr import DeformableDetrConfig
 from transformers.utils import logging
-from transformers.models.auto import CONFIG_MAPPING, AutoConfig
 from transformers.utils.constants import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
 
 from .utils import check_local_file
