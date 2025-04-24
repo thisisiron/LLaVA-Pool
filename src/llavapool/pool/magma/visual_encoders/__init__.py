@@ -1,10 +1,10 @@
 import torch
-from .clip import CustomCLIP
+
 from ..utils import check_local_file
+from .clip import CustomCLIP
 
 
 def build_encoder(config, init_kwargs):
-    import pdb;pdb.set_trace()
     if config.model_type == "clip_vision_model":
         init_kwargs["pretrained_model_name_or_path"] = config.vision_name_or_path
         model = CustomCLIP.from_pretrained(

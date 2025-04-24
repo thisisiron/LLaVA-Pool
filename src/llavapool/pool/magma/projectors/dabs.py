@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-
 from einops import rearrange
 from transformers.models.deformable_detr import DeformableDetrConfig
 from transformers.models.deformable_detr.modeling_deformable_detr import (

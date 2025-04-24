@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import shutil
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -142,7 +143,6 @@ def _parse_eval_args(args: Optional[Dict[str, Any]] = None) -> _EVAL_CLS:
 
 
 def get_train_args(args: Optional[Dict[str, Any]] = None) -> _TRAIN_CLS:
-    print(args)
     model_args, data_args, training_args, finetuning_args, generating_args = _parse_train_args(args)
 
     # Setup logging

@@ -1,4 +1,5 @@
 from transformers import CLIPVisionModel
+
 from .visual_encoder_mixin import VisualEncoderMixin
 
 

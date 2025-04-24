@@ -8,6 +8,7 @@ from einops import rearrange
 from timm.layers import LayerNorm, LayerNorm2d
 from timm.models.regnet import RegStage
 from transformers.modeling_outputs import BaseModelOutput
+from transformers.activations import ACT2FN
 
 from ..configuration_magma import MagmaVisualProjectorConfig
 
@@ -179,10 +180,6 @@ class CAbstractor(ConvProjector):
         else:
             self.net = sampler
             self.readout = build_mlp(mlp_depth, encoder_hidden_size, output_hidden_size)
-
-
-from transformers.activations import ACT2FN
-
 
 # Copied from transformers.models.llava.modeling_llava.LlavaMultiModalProjector
 class LlavaMultiModalProjector(nn.Module):
