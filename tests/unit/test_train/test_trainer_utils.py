@@ -1,8 +1,9 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import torch
 
 from llavapool.train.trainer_utils import calculate_loss, evaluate_model
+
 
 class TestTrainerUtils:
     """Tests for functions in trainer_utils.py"""

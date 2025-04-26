@@ -1,12 +1,8 @@
-import pytest
-from unittest.mock import patch, MagicMock
 import os
-from pathlib import Path
-import json
 from argparse import Namespace
+from unittest.mock import MagicMock
 
-from llavapool.data.data_loader import convert_sharegpt, load_dataset
-from llavapool.data.data_loader import load_dataset_module
+from llavapool.data.data_loader import convert_sharegpt, load_dataset_module
 
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
@@ -169,6 +165,7 @@ class TestDataLoader:
         
         # Import required libraries
         import transformers
+
         from llavapool.data.converter import load_converter
         
         # Setup model arguments
@@ -203,7 +200,6 @@ class TestDataLoader:
         converter = load_converter(processor, tokenizer, data_args)
         
         # Call the function under test
-        from llavapool.data.data_loader import load_dataset_module
         result = load_dataset_module(
             converter=converter,
             data_args=data_args,

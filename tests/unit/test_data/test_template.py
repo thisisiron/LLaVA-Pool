@@ -1,9 +1,9 @@
-import pytest
-from unittest.mock import patch, MagicMock
-import os
-from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from llavapool.data.template import get_template_by_name, apply_template
+import pytest
+
+from llavapool.data.template import apply_template, get_template_by_name
+
 
 class TestTemplate:
     """Tests for functions in template.py"""

@@ -1,10 +1,9 @@
-import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock, call, patch
+
 import torch
-import os
-from pathlib import Path
 
 from llavapool.train.sft.workflow import run_supervised_fine_tuning
+
 
 class TestWorkflow:
     """Tests for functions in workflow.py"""

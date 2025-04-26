@@ -1,10 +1,10 @@
-import os
-import pytest
 import json
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+import os
 
-from llavapool.data.dataset_config import DatasetConfig, get_dataset_config, CommonColumns, ShareGPTTags
+import pytest
+
+from llavapool.data.dataset_config import CommonColumns, DatasetConfig, ShareGPTTags, get_dataset_config
+
 
 class TestDatasetConfig:
     """Tests for DatasetConfig class and related functions"""

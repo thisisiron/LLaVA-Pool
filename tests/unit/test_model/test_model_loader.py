@@ -1,14 +1,9 @@
-import pytest
-from unittest.mock import patch, MagicMock
-import torch
-from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from llavapool.model.model_loader import (
-    load_tokenizer_and_processor,
-    load_tokenizer,
-    load_processor,
-    load_model
-)
+import torch
+
+from llavapool.model.model_loader import load_model, load_processor, load_tokenizer, load_tokenizer_and_processor
+
 
 class TestModelLoader:
     """Tests for functions in model_loader.py"""
