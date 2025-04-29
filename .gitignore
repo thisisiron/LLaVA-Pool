@@ -123,6 +123,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env*
 .venv
 env/
 venv/
@@ -166,3 +167,38 @@ data/*
 
 output/
 results/
+
+# Added by Claude Task Master
+# Logs
+logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+# Dependency directories
+node_modules/
+# Environment variables
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS specific
+.DS_Store
+
+# AI editor and MCP settings
+.cursor/
+
+# TaskMaster
+.taskmasterconfig
+tasks.json
+tasks/ 
+scripts/task-complexity-report.json
+.roo/
+scripts/*[pP][rR][dD].txt
+.roomodes
+.windsurfrules
