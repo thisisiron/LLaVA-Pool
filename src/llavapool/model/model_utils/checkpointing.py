@@ -1,5 +1,5 @@
 import inspect
-from functools import partial, wraps
+from functools import WRAPPER_ASSIGNMENTS, partial, wraps
 from types import MethodType
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Union
 
@@ -57,23 +57,27 @@ def get_unsloth_gradient_checkpointing_func() -> Callable:
 
 
 def get_custom_gradient_checkpointing_func(gradient_checkpointing_func: Callable) -> Callable:
-    r"""
-    Only applies gradient checkpointing to trainable layers.
-    """
+    r"""Only applies gradient checkpointing to trainable layers."""
 
-    @wraps(gradient_checkpointing_func)
+    @wraps(gradient_checkpointing_func, assigned=WRAPPER_ASSIGNMENTS + ("__self__",))
     def custom_gradient_checkpointing_func(func: Callable, *args: Union["torch.Tensor", Any], **kwargs):
-        module: "torch.nn.Module" = func.__self__
+        if isinstance(func, partial):
+            module: torch.nn.Module = func.func.__self__
+        else:
+            module: torch.nn.Module = func.__self__
 
+        has_grad = False
         if any(param.requires_grad for param in module.parameters()):
+            has_grad = True
             for arg in args:
                 if torch.is_tensor(arg) and torch.is_floating_point(arg):
                     arg.requires_grad_(True)
+                    break  # assume the first tensor is always the hidden states
 
-        return gradient_checkpointing_func(func, *args, **kwargs)
-
-    if hasattr(gradient_checkpointing_func, "__self__"):  # fix unsloth gc test case
-        custom_gradient_checkpointing_func.__self__ = gradient_checkpointing_func.__self__
+        if has_grad:
+            return gradient_checkpointing_func(func, *args, **kwargs)
+        else:
+            return func(*args, **kwargs)
 
     return custom_gradient_checkpointing_func
 

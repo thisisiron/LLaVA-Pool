@@ -414,8 +414,4 @@ def build_model(
                     name, param.dtype, param.device, param.requires_grad
                 )
             )
-    print(model.language_model.dtype)
-    print(model.vision_model.dtype)
-    print(next(model.multi_modal_projector.parameters()).dtype)
-    print('end')
     return model
