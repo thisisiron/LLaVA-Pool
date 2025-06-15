@@ -1,7 +1,6 @@
 import logging
 import os
 import sys
-import shutil
 from typing import Any, Dict, Optional, Tuple
 
 import torch

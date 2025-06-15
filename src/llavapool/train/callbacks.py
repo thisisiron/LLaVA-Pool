@@ -112,13 +112,17 @@ class SaveProcessorCallback(TrainerCallback):
         if args.should_save:
             output_dir = os.path.join(args.output_dir, f"{PREFIX_CHECKPOINT_DIR}-{state.global_step}")
             self.processor.save_pretrained(output_dir)
-
+    
+    @override
+    def on_train_begin(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+        if sys.argv[1].endswith(".json") or sys.argv[1].endswith(".yaml") or sys.argv[1].endswith(".yml"):
+            shutil.copy(os.path.abspath(sys.argv[1]), os.path.join(args.output_dir, os.path.basename(sys.argv[1])))
+            
     @override
     def on_train_end(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
         if args.should_save:
             self.processor.save_pretrained(args.output_dir)
-        if sys.argv[1].endswith(".json") or sys.argv[1].endswith(".yaml") or sys.argv[1].endswith(".yml"):
-            shutil.copy(os.path.abspath(sys.argv[1]), os.path.join(args.output_dir, os.path.basename(sys.argv[1])))
+
 
 
 
