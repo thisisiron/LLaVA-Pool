@@ -8,7 +8,7 @@ from transformers.models.deformable_detr.modeling_deformable_detr import (
     DeformableDetrDecoderOutput,
 )
 
-from . import build_eos_tokens, build_pos_embeds
+from .projectors import build_eos_tokens, build_pos_embeds
 
 
 class DAbstractor(DeformableDetrDecoder):

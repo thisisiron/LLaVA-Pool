@@ -281,13 +281,14 @@ def load_dataset_module(
         
         data_files = []
         data_path = os.path.join(data_args.dataset_dir, dataset_config.file_name)
+        
         if os.path.isfile(data_path):  # is file
             data_files.append(data_path)
             file_format = data_path.split(".")[-1]
             data_path = file_format
         else:
             raise ValueError(f"File {data_path} not found.")
-        
+
         dataset = load_dataset(
             path=data_path,
             name=data_name,

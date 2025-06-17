@@ -360,6 +360,18 @@ _register_template(
 )
 
 
+_register_template(
+    name="magma",
+    default_system=(
+        "A chat between a curious user and an artificial intelligence assistant. "
+        "The assistant gives helpful, detailed, and polite answers to the user's questions."
+    ),
+    format_system="{{content}}",
+    format_user="USER: {{content}} ASSISTANT:",
+    format_assistant="{{content}}{{eos_token}}",
+    image_token="<|image|>",
+)
+
 # _register_template(
 #     name="deepseekv2",
 #     default_system=(
