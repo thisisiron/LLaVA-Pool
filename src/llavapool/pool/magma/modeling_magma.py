@@ -206,8 +206,7 @@ class MagmaPreTrainedModel(PreTrainedModel):
         "MagmaVisualProjectorLayer",
         "LlamaForCausalLM",
         "Parameter",
-    ]
-    _keep_in_fp32_modules = ["wo"]
+    ]   
 
     def _init_weights(self, module):
         """Initialize the weights"""
@@ -246,8 +245,6 @@ def build_projector(config: MagmaConfig):
         #     abstractor.to(dtype)
 
         return multi_modal_projector
-      
-
 
 
 @dataclass
@@ -439,7 +436,6 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
                 image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
                 image_feature = image_feature.flatten(1, 2).flatten(2, 3)
                 image_feature = unpad_image(image_feature, image_sizes[image_idx])
-
                 if image_newline is not None:
                     image_feature = torch.cat(
                         (
@@ -472,7 +468,7 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
             selected_image_feature = torch.cat(hs_pool, dim=-1)
 
         if vision_feature_select_strategy == "default":
-            selected_image_feature = selected_image_feature[:, 1:]
+            selected_image_feature = selected_image_feature[:, 1:, :]
         elif vision_feature_select_strategy == "full":
             selected_image_feature = selected_image_feature
 
@@ -579,7 +575,7 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
                 vision_feature_select_strategy=vision_feature_select_strategy,
                 image_newline=self.image_newline,
             )
-            
+
             special_image_mask = (input_ids == self.config.image_token_index).unsqueeze(-1)
             special_image_mask = special_image_mask.expand_as(inputs_embeds).to(inputs_embeds.device)
             if not is_torchdynamo_compiling() and inputs_embeds[special_image_mask].numel() != image_features.numel():

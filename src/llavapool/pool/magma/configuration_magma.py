@@ -15,8 +15,8 @@ logger = logging.get_logger(__name__)
 class MagmaVisionConfig(PretrainedConfig):
     def __init__(
         self,
-        vision_name_or_path: str = "openai/clip-vit-large-patch14",
-        image_size: int = 224,
+        vision_name_or_path: str = "openai/clip-vit-large-patch14-336",
+        image_size: int = 336,
         image_mean = OPENAI_CLIP_MEAN,
         image_std = OPENAI_CLIP_STD,
         hidden_size: int = None,

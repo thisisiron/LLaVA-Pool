@@ -164,14 +164,14 @@ class MagmaImageProcessor(BaseImageProcessor):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        size = size if size is not None else {"shortest_edge": 224}
+        size = size if size is not None else {"shortest_edge": 336}
         size = get_size_dict(size, default_to_square=False)
         image_grid_pinpoints = (
             image_grid_pinpoints
             if image_grid_pinpoints is not None
             else [[336, 672], [672, 336], [672, 672], [1008, 336], [336, 1008]]
         )
-        crop_size = crop_size if crop_size is not None else {"height": 224, "width": 224}
+        crop_size = crop_size if crop_size is not None else {"height": 336, "width": 336}
         crop_size = get_size_dict(crop_size, default_to_square=True, param_name="crop_size")
 
         self.do_resize = do_resize

@@ -142,6 +142,7 @@ class MagmaProcessor(ProcessorMixin):
                         image_size = image_size.tolist()
                     orig_height, orig_width = image_size
                     num_image_tokens = self._get_number_of_features(orig_height, orig_width, height, width)
+
                     if self.vision_feature_select_strategy == "default":
                         num_image_tokens -= 1
                     sample = sample.replace(self.image_token, "<placeholder>" * num_image_tokens, 1)
