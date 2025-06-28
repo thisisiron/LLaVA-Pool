@@ -11,23 +11,23 @@ freeze_language_model: false
 deepspeed: scripts/deepspeed/zero3.json
 
 ### dataset
-dataset: aihub_table
+dataset: demo
 template: qwen2_vl
 cutoff_len: 32768
 overwrite_cache: true
 preprocessing_num_workers: 80
 
 ### output
-output_dir: output/debug/20250219
+output_dir: output/debug/test
 logging_steps: 100
-save_steps: 20000
+save_steps: 20
 overwrite_output_dir: false
 
 ### train
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 8
 learning_rate: 1.0e-5
-num_train_epochs: 1
+num_train_epochs: 50
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 bf16: true
